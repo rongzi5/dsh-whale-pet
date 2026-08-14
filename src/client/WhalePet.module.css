@@ -1,0 +1,154 @@
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  contain: layout style paint;
+}
+
+.pet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 320px;
+  height: 240px;
+  pointer-events: none;
+  transform-origin: 50% 55%;
+  will-change: transform;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  filter: drop-shadow(0 10px 8px rgb(18 27 62 / 24%));
+}
+
+.shadow {
+  position: absolute;
+  bottom: 13px;
+  left: 79px;
+  width: 162px;
+  height: 17px;
+  border-radius: 50%;
+  background: rgb(12 20 45 / 18%);
+  filter: blur(7px);
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.hitZone {
+  position: absolute;
+  z-index: 2;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: transparent;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.hitZone:active {
+  cursor: grabbing;
+}
+
+.hitBody {
+  top: 47px;
+  left: 54px;
+  width: 194px;
+  height: 146px;
+  border-radius: 56% 46% 49% 53%;
+  transform: rotate(4deg);
+}
+
+.hitBody:focus-visible {
+  outline: 3px solid rgb(77 107 254 / 46%);
+  outline-offset: 2px;
+}
+
+.hitTail {
+  top: 78px;
+  right: 23px;
+  width: 92px;
+  height: 84px;
+  clip-path: polygon(0 39%, 38% 39%, 66% 2%, 73% 35%, 100% 19%, 84% 53%, 99% 82%, 66% 64%, 39% 57%, 0 57%);
+}
+
+.hitDorsal {
+  top: 20px;
+  left: 133px;
+  width: 72px;
+  height: 74px;
+  clip-path: polygon(48% 0, 86% 94%, 8% 94%);
+}
+
+.hitFin {
+  top: 132px;
+  left: 104px;
+  width: 108px;
+  height: 74px;
+  clip-path: polygon(17% 0, 92% 39%, 46% 100%, 0 31%);
+}
+
+.heart {
+  --heart-x: 0px;
+  position: absolute;
+  top: 76px;
+  left: 107px;
+  z-index: 3;
+  color: #ff5277;
+  font: 700 19px/1 system-ui, sans-serif;
+  text-shadow: 0 2px 5px rgb(172 31 73 / 16%);
+  pointer-events: none;
+  animation: heart-rise 920ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
+.heartLeft {
+  --heart-x: -27px;
+}
+
+.heartRight {
+  --heart-x: 25px;
+  font-size: 15px;
+  animation-delay: 110ms;
+}
+
+.error {
+  position: absolute;
+  top: 98px;
+  left: 66px;
+  z-index: 4;
+  width: 188px;
+  color: #8a2941;
+  font: 600 12px/1.35 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+
+@keyframes heart-rise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 8px) scale(0.4);
+  }
+
+  18% {
+    opacity: 1;
+    transform: translate(calc(var(--heart-x) * 0.18), -3px) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(var(--heart-x), -64px) scale(0.72);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heart {
+    animation-duration: 1ms;
+  }
+}

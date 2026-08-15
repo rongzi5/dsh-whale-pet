@@ -43,6 +43,7 @@ export class WhalePetController {
   private browser: Window | null = null
   private currentDpr = 0
   private activity: WhaleActivity = IDLE_ACTIVITY
+  private lastYaw = 0
 
   public constructor(
     private readonly motion: WhaleMotionController = new WhaleMotionController(),
@@ -160,6 +161,11 @@ export class WhalePetController {
     this.motion.celebrate()
   }
 
+  /** Latest rendered model yaw; used to anchor effects like bubbles. */
+  public get currentYaw(): number {
+    return this.lastYaw
+  }
+
   private readonly resize = (): void => {
     const doc = this.doc
     const browser = this.browser
@@ -194,6 +200,7 @@ export class WhalePetController {
     }
 
     const frame = this.motion.step(dt)
+    this.lastYaw = frame.yaw
     targets.pet.style.transform = `translate3d(${formatTransform(frame.x)}px, ${formatTransform(frame.y)}px, 0) rotate(${formatTransform(frame.angle)}deg) scale(${formatTransform(frame.scale)})`
     targets.shadow.style.transform = frame.dragging
       ? 'scale(0.7, 0.62)'

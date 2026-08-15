@@ -31,6 +31,8 @@ export type WhaleEffectKind = 'heart' | 'bubble' | 'sweat'
 export interface WhaleEffect {
   id: number
   kind: WhaleEffectKind
+  /** Local emission point inside the pet box, e.g. the whale's mouth. */
+  origin?: { x: number; y: number }
 }
 
 /** Session-bridge lifecycle, surfaced for diagnostics and DOM inspection. */

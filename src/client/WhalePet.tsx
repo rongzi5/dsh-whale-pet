@@ -109,7 +109,12 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
           <span
             key={bubble.id}
             className={styles.bubble}
-            style={{ '--bubble-drift': `${((bubble.id % 3) - 1) * 12}px`, '--bubble-scale': `${0.8 + (bubble.id % 3) * 0.2}` } as React.CSSProperties}
+            style={{
+              left: `${bubble.origin?.x ?? 42}px`,
+              top: `${bubble.origin?.y ?? 74}px`,
+              '--bubble-drift': `${((bubble.id % 3) - 1) * 12}px`,
+              '--bubble-scale': `${0.8 + (bubble.id % 3) * 0.2}`,
+            } as React.CSSProperties}
             aria-hidden="true"
           />
         ))}

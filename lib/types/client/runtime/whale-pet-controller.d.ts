@@ -34,6 +34,7 @@ export declare class WhalePetController {
     private browser;
     private currentDpr;
     private activity;
+    private lastYaw;
     constructor(motion?: WhaleMotionController);
     /**
      * Mount the runtime onto the view's DOM handles. Idempotent: a repeated
@@ -67,6 +68,8 @@ export declare class WhalePetController {
     setActivity(activity: WhaleActivity): void;
     /** Run the motion layer's longer celebration lap. */
     celebrate(): void;
+    /** Latest rendered model yaw; used to anchor effects like bubbles. */
+    get currentYaw(): number;
     private readonly resize;
     private readonly handlePointerMove;
     private readonly handleRelease;

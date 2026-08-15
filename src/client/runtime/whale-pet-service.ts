@@ -97,7 +97,11 @@ export class WhalePetService {
   /** Add one transient DOM effect (heart, bubble or sweat drop). */
   public playEffect(kind: WhaleEffectKind): void {
     if (this.disposed) return
-    const effect: WhaleEffect = { id: this.nextEffectId, kind }
+    const effect: WhaleEffect = {
+      id: this.nextEffectId,
+      kind,
+      ...(kind === 'bubble' ? { origin: this.bubbleOrigin() } : {}),
+    }
     this.nextEffectId += 1
     this.effects = [...this.effects, effect]
     this.publish()
@@ -107,6 +111,17 @@ export class WhalePetService {
       this.publish()
     }, EFFECT_TTL_MS[kind])
     this.timers.add(timer)
+  }
+
+  /**
+   * Anchor bubbles at the mouth side implied by the current model yaw.
+   * yaw 0 faces left, π faces right; intermediate yaw faces toward/away.
+   */
+  private bubbleOrigin(): { x: number; y: number } {
+    const forwardX = -Math.cos(this.controller.currentYaw)
+    const x = Math.min(286, Math.max(34, 160 + forwardX * 126))
+    const y = 70
+    return { x, y }
   }
 
   /** Celebration: hearts keep appearing for the whole loop, plus bubbles. */

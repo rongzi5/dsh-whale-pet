@@ -40,6 +40,11 @@ export declare class WhalePetService {
     subscribe(listener: () => void): () => void;
     /** Add one transient DOM effect (heart, bubble or sweat drop). */
     playEffect(kind: WhaleEffectKind): void;
+    /**
+     * Anchor bubbles at the mouth side implied by the current model yaw.
+     * yaw 0 faces left, π faces right; intermediate yaw faces toward/away.
+     */
+    private bubbleOrigin;
     /** Celebration: hearts keep appearing for the whole loop, plus bubbles. */
     celebrate(): void;
     private scheduleCelebrationHearts;

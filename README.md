@@ -11,9 +11,32 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
 - Rests at the viewport edge and patrols only at long, randomized intervals.
 - Looks toward the pointer and shows a short heart reaction on hover or activation.
 - Uses several body-shaped hit regions for dragging instead of a rectangular canvas target.
+- Uses a continuous model yaw, so look, drag, patrol, and celebration all follow their movement direction instead of snapping left/right.
 - Runs screen motion and Three.js rendering in one `requestAnimationFrame` loop.
 - Uses exponential, non-overshooting drag follow and frame-rate-independent release inertia.
 - Integrates animation phase over time so changing speed cannot jump the body, tail, or fins.
+
+## Session integration
+
+The plugin observes the current DSH session through `ctx.sessions` and drives
+the pet's mood from the conversation snapshot and the `goal`/`plan`
+projections. The bridge retries until the sessions service is available and
+absorbs history-window lag after binding, so old errors never trigger a
+reaction.
+
+| Session state | Pet reaction |
+|---|---|
+| Assistant tokens or tool calls are running | `working`/`thinking`: faster swimming, input-area gaze, periodic bubbles |
+| One turn runs longer than 20s | `focused`: a slight dive posture |
+| Tool fails (non-zero exit code or error node) | `error`: sweat drop + startled eyes for 8s |
+| Long turn (≥15s), goal completion, or plan exit | `celebrating`: a 360° elliptical lap with continuous yaw and screen-space depth, while hearts stream every 650ms |
+| Hover or drag while sleeping | Wakes immediately and resets the idle clock |
+| No activity for 60s | `sleeping`: closed eyes, slow breathing, z-z-z |
+
+Debug attributes on the pet element:
+
+- `data-whale-activity` — current mood (`idle`, `thinking`, `working`, `focused`, `celebrating`, `error`, `sleeping`)
+- `data-whale-bridge` — session bridge state (`off`, `waiting`, `bound`)
 
 ## Installation
 
@@ -59,6 +82,15 @@ corepack pnpm dsh web
 ```
 
 Open `http://127.0.0.1:3080` after the process starts. The Host composition is loaded at process startup, so restart `dsh web` after adding or updating this plugin; refreshing the browser alone does not add a new composition row.
+
+## Architecture
+
+- `src/client/motion.ts` — pure frame-rate-independent screen-space motion, including the celebration loop path.
+- `src/client/runtime/scheduler.ts` — the single `requestAnimationFrame` clock.
+- `src/client/runtime/whale-pet-controller.ts` — owns the Three.js scene, DOM listeners, and per-frame rendering.
+- `src/client/runtime/whale-pet-service.ts` — observable runtime service (`ctx.whalePet`) with activity and transient effects.
+- `src/client/runtime/session-observer.ts` — polls the current session and maps session state to moods/effects.
+- `src/client/WhalePet.tsx` — thin view consuming the service snapshot through `useSyncExternalStore`.
 
 ## Model source and acknowledgements
 

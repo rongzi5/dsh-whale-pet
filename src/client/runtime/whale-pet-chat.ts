@@ -125,8 +125,18 @@ export class WhalePetChat {
     if (coarse === null) return null
     if (coarse.sessionId !== undefined && this.transport.getProgress !== undefined) {
       try {
-        return { ...coarse, ...(await this.transport.getProgress(coarse.sessionId)) }
-      } catch {
+        const fine = await this.transport.getProgress(coarse.sessionId)
+        const merged = { ...coarse, ...fine }
+        console.debug('[ui-whale-pet] probed fine progress', {
+          step: merged.step,
+          tools: merged.tools,
+          lastActivity: merged.lastActivity,
+          lastSummary: merged.lastSummary,
+          jobs: merged.jobs,
+        })
+        return merged
+      } catch (error) {
+        console.debug('[ui-whale-pet] fine progress probe failed, using coarse snapshot', error instanceof Error ? error.message : String(error))
         return coarse
       }
     }

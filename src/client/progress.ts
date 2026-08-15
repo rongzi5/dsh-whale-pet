@@ -99,7 +99,10 @@ export function progressToText(progress: WhaleSessionProgress | null): string | 
  */
 export function buildProgressContext(progress: WhaleSessionProgress | null): string | null {
   if (progress === null || !progress.active) return null
-  const lines: string[] = ['当前 DSH 会话状态（用户可能问进度，请如实简短回答）：']
+  const lines: string[] = [
+    '当前 DSH 会话状态（这是桌宠实时探寻到的真实数据）：',
+    '如果用户询问进度，请引用下面的具体数据（第几步、正在运行的命令/工具、最新动态、最近结果、后台任务输出），不要泛泛而谈；回答进度问题时可以超过 60 字。',
+  ]
   if (progress.running) {
     const tools = progress.tools.length > 0 ? progress.tools.join('、') : undefined
     const minutes = Math.max(1, Math.round(progress.turnMs / 60_000))

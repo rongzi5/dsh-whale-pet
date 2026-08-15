@@ -245,7 +245,7 @@ describe('WhalePetChat', () => {
     await chat.ask('进度如何了')
     const system = receivedMessages?.[0]?.content ?? ''
     expect(system).toContain('正在运行：bash')
-    expect(system).not.toContain('最新动态')
+    expect(system).not.toContain('- 最新动态：')
     service.dispose()
   })
 

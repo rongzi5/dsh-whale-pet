@@ -7,6 +7,7 @@
 
 import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleBridgeState, type WhaleEffect, type WhaleEffectKind, type WhalePetViewSnapshot } from '../activity.ts'
 import { WhalePetController, type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts'
+import type { SessionWhaleObserver } from './session-observer.ts'
 
 const EFFECT_TTL_MS: Record<WhaleEffectKind, number> = {
   heart: 950,
@@ -23,6 +24,7 @@ export class WhalePetService {
   private bridge: WhaleBridgeState = 'off'
   private snapshot: WhalePetViewSnapshot = { activity: this.activity, effects: this.effects, bridge: this.bridge }
   private nextEffectId = 1
+  private observer: SessionWhaleObserver | null = null
   private disposed = false
 
   /** Mount the view's DOM handles. Delegates to the controller unchanged. */
@@ -34,6 +36,18 @@ export class WhalePetService {
   /** Unmount the current view surface without dropping the service or motion state. */
   public unmount(): void {
     this.controller.dispose()
+  }
+
+  /** Attach the session bridge for user-activity wake notifications. */
+  public bindObserver(observer: SessionWhaleObserver): void {
+    this.observer = observer
+  }
+
+  /** Wake a sleeping pet on hover/drag and refresh the session idle clock. */
+  public wake(): void {
+    this.observer?.noteUserActivity()
+    this.setActivity(IDLE_ACTIVITY)
+    this.controller.setActivity(IDLE_ACTIVITY)
   }
 
   /** View-delegated interaction passthroughs. */
@@ -111,6 +125,7 @@ export class WhalePetService {
     this.effects = []
     this.activity = IDLE_ACTIVITY
     this.bridge = 'off'
+    this.observer = null
     this.snapshot = { activity: this.activity, effects: this.effects, bridge: this.bridge }
   }
 

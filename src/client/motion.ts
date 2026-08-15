@@ -6,7 +6,7 @@ export const PET_HEIGHT = 240
 const MIN_X = 14
 const MIN_Y = 24
 
-type PetMode = 'idle' | 'patrol' | 'dragging' | 'settling'
+type PetMode = 'idle' | 'patrol' | 'dragging' | 'settling' | 'loop'
 export type WhaleMotionMode = 0 | 1 | 2 | 3
 
 export interface WhaleMotionFrame {
@@ -69,6 +69,8 @@ export class WhaleMotionController {
   private targetY = 0
   private moveDx = 0
   private moveDy = 0
+  private loopStartAngle = 0
+  private loopDuration = 7
 
   private angle = 0
   private angleTarget = 0
@@ -190,7 +192,7 @@ export class WhaleMotionController {
       this.lookTime = Math.max(this.lookTime, 1.2)
     }
 
-    if (activity.mood === 'sleeping' && this.mode === 'patrol') {
+    if (activity.mood === 'sleeping' && (this.mode === 'patrol' || this.mode === 'loop')) {
       this.mode = 'settling'
       this.moveTime = 0
       this.vx = this.motionVelocityX * 0.2
@@ -198,11 +200,10 @@ export class WhaleMotionController {
     }
   }
 
-  /** Run one longer, faster edge lap; used for long-turn/goal celebrations. */
+  /** Run one full 360° loop around a wide elliptical path. */
   public celebrate(): void {
-    this.beginPatrol()
-    this.moveDuration = 3.4 + this.random() * 0.8
-    this.lookTime = this.moveDuration + 0.5
+    if (this.mode === 'dragging') return
+    this.startCelebrationLoop()
   }
 
   public wasClick(maximumDrag = 7): boolean {
@@ -221,6 +222,8 @@ export class WhaleMotionController {
       this.x += (this.dragTargetX - this.x) * follow
       this.y += (this.dragTargetY - this.y) * follow
       this.mode = 'dragging'
+    } else if (this.mode === 'loop') {
+      this.stepLoop(dt)
     } else if (this.mode === 'patrol') {
       this.stepPatrol(dt)
     } else if (this.mode === 'settling') {
@@ -354,6 +357,63 @@ export class WhaleMotionController {
     this.vy = 0
   }
 
+  private startCelebrationLoop(): void {
+    const baseX = this.loopBaseX()
+    const baseY = this.loopBaseY()
+    this.loopStartAngle = Math.atan2(this.y - baseY, this.x - baseX)
+    this.loopDuration = 6.5 + this.random() * 1.0
+    this.moveTime = 0
+    this.mode = 'loop'
+    this.lookTime = this.loopDuration + 0.5
+  }
+
+  private stepLoop(dt: number): void {
+    this.moveTime += dt
+    const progress = clamp(this.moveTime / this.loopDuration, 0, 1)
+    const eased = easeInOut(progress)
+    const angle = this.loopStartAngle + eased * Math.PI * 2
+    const radiusX = this.loopRadiusX()
+    const radiusY = this.loopRadiusY()
+    const baseX = this.loopBaseX()
+    const baseY = this.loopBaseY()
+    this.x = clamp(baseX + Math.cos(angle) * radiusX, MIN_X, this.maxX())
+    this.y = clamp(baseY + Math.sin(angle) * radiusY, MIN_Y, this.maxY())
+
+    // Face the tangent direction of the loop.
+    const tangentX = -Math.sin(angle) * radiusX
+    const tangentY = Math.cos(angle) * radiusY
+    this.desiredYaw = tangentX < 0 ? 0 : Math.PI
+    this.desiredPitch = clamp(-tangentY / Math.max(1, radiusY) * 0.22, -0.22, 0.22)
+    this.angleTarget = clamp(tangentY / Math.max(1, radiusY) * 10, -10, 10)
+
+    if (progress < 1) return
+    this.mode = 'settling'
+    this.moveTime = 0
+    this.vx = tangentX / this.loopDuration
+    this.vy = tangentY / this.loopDuration
+    this.angleTarget = 0
+    this.nextPatrol = 45 + this.random() * 45
+  }
+
+  /** Ellipse center for the celebration loop (pet top-left coordinates). */
+  private loopBaseX(): number {
+    return Math.max(MIN_X, this.width * 0.5 - PET_WIDTH * 0.5)
+  }
+
+  private loopBaseY(): number {
+    return Math.max(MIN_Y, this.height * 0.5 - PET_HEIGHT * 0.5)
+  }
+
+  private loopRadiusX(): number {
+    const half = Math.max(0, (this.width - PET_WIDTH) * 0.5 - MIN_X)
+    return clamp(this.width * 0.35, Math.min(120, half), Math.max(120, half))
+  }
+
+  private loopRadiusY(): number {
+    const half = Math.max(0, (this.height - PET_HEIGHT) * 0.5 - MIN_Y)
+    return clamp(this.height * 0.35, Math.min(100, half), Math.max(100, half))
+  }
+
   private beginPatrol(): void {
     const edge = this.nearestEdge()
     const travel = 100 + this.random() * 80
@@ -432,7 +492,7 @@ export class WhaleMotionController {
   private frame(): WhaleMotionFrame {
     let mode: WhaleMotionMode = 0
     if (this.dragging) mode = 2
-    else if (this.mode === 'patrol') mode = 1
+    else if (this.mode === 'patrol' || this.mode === 'loop') mode = 1
     else if (this.mode === 'settling') mode = 3
     return {
       x: this.x,

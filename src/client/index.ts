@@ -20,6 +20,7 @@ export const inject = ['slots', 'sessions']
 export function apply(ctx: ClientContext): void {
   const whalePet = new WhalePetService()
   const observer = new SessionWhaleObserver(ctx as unknown as WhaleSessionClientContext, whalePet)
+  whalePet.bindObserver(observer)
 
   ctx.effect(() => {
     const disposeService = ctx.provide('whalePet', whalePet)

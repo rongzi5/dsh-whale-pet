@@ -46,6 +46,7 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
 
   const pointerEnter = (event: PointerEvent<HTMLElement>): void => {
     if (isPetDescendant(event.relatedTarget)) return
+    whalePet.wake()
     whalePet.setHover(true)
     react()
   }
@@ -59,6 +60,7 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
+    whalePet.wake()
     whalePet.beginDrag(event.clientX, event.clientY)
   }
 

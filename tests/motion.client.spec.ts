@@ -80,4 +80,31 @@ describe('WhaleMotionController', () => {
     for (let frame = 0; frame < 5; frame += 1) view = motion.step(0.04)
     expect(view.mode).toBe(1)
   })
+
+  it('runs a wide 360-degree celebration loop across the viewport', () => {
+    const motion = new WhaleMotionController(1440, 900, fixedRandom)
+    motion.step(1 / 60)
+    motion.celebrate()
+
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    let sawPatrolMode = false
+
+    for (let frame = 0; frame < 520; frame += 1) {
+      const view = motion.step(1 / 60)
+      minX = Math.min(minX, view.x)
+      maxX = Math.max(maxX, view.x)
+      minY = Math.min(minY, view.y)
+      maxY = Math.max(maxY, view.y)
+      if (view.mode === 1) sawPatrolMode = true
+    }
+
+    expect(sawPatrolMode).toBe(true)
+    expect(maxX - minX).toBeGreaterThan(700)
+    expect(maxY - minY).toBeGreaterThan(350)
+    expect(minX).toBeGreaterThanOrEqual(14)
+    expect(minY).toBeGreaterThanOrEqual(24)
+  })
 })

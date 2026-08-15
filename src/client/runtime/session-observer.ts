@@ -15,7 +15,7 @@ const POLL_MS = 200
 const FOCUS_AFTER_MS = 20_000
 const LONG_TURN_MS = 15_000
 const IDLE_SLEEP_MS = 60_000
-const CELEBRATE_MS = 5_000
+const CELEBRATE_MS = 7_500
 const ERROR_MS = 4_000
 const ACTIVE_BUBBLE_MS = 3_500
 const ERROR_SETTLE_MS = 2_500
@@ -40,7 +40,9 @@ interface ConversationLike {
 interface ConversationNodeLike {
   kind?: string
   seq?: number
+  time?: number
   isError?: boolean
+  resultView?: { exitCode?: number }
 }
 
 interface GoalProjectionLike {
@@ -75,14 +77,27 @@ interface TransientMood {
   until: number
 }
 
-function latestErrorSeq(nodes: readonly ConversationNodeLike[]): number {
+interface ErrorMark {
+  seq: number
+  time: number
+}
+
+function latestError(nodes: readonly ConversationNodeLike[]): ErrorMark | null {
   let seq = -1
+  let time = -Infinity
   for (const node of nodes) {
-    if (node.kind === 'turn-error' || (node.kind === 'tool-result' && node.isError === true)) {
-      seq = Math.max(seq, node.seq ?? 0)
+    const exitCode = node.resultView?.exitCode
+    const failed = node.kind === 'turn-error'
+      || (node.kind === 'tool-result' && (node.isError === true || (typeof exitCode === 'number' && exitCode !== 0)))
+    if (failed) {
+      const next = node.seq ?? 0
+      if (next >= seq) {
+        seq = next
+        time = node.time ?? time
+      }
     }
   }
-  return seq
+  return seq < 0 ? null : { seq, time }
 }
 
 /**
@@ -129,6 +144,7 @@ export class SessionWhaleObserver {
   private lastActivityBubbleAt = 0
   private lastMood: WhaleActivity['mood'] | null = null
   private boundAt = 0
+  private lastNodeCount = -1
   private disposed = false
 
   public constructor(
@@ -163,6 +179,11 @@ export class SessionWhaleObserver {
     this.goalFace = null
     this.planFace = null
     this.service.setBridgeState('off')
+  }
+
+  /** Record direct user interaction so sleep can be interrupted. */
+  public noteUserActivity(): void {
+    this.lastActivityAt = Date.now()
   }
 
   private tick(): void {
@@ -225,7 +246,7 @@ export class SessionWhaleObserver {
     this.wasRunning = snapshot.running
     this.turnStartedAt = snapshot.running ? Date.now() : 0
     this.lastActivityAt = Date.now()
-    this.lastErrorSeq = latestErrorSeq(snapshot.nodes)
+    this.lastErrorSeq = latestError(snapshot.nodes)?.seq ?? -1
     this.lastAgentError = snapshot.lastAgentError ?? null
     console.debug('[ui-whale-pet] session bridge bound', current, {
       running: snapshot.running,
@@ -256,15 +277,30 @@ export class SessionWhaleObserver {
     if (active) this.lastActivityAt = now
 
     // Tool/turn failures: react once per new failure node. History windows
-    // load asynchronously after binding, so the first ERROR_SETTLE_MS only
-    // absorb late-arriving old nodes without reacting to them.
-    const errorSeq = latestErrorSeq(snapshot.nodes)
+    // load asynchronously after binding, so late-arriving OLD nodes (time
+    // before the bind) are absorbed, while a genuinely new failure fires
+    // immediately even inside the settle window.
+    const mark = latestError(snapshot.nodes)
     const agentError = snapshot.lastAgentError ?? null
-    if (errorSeq > this.lastErrorSeq) {
-      const settled = now - this.boundAt >= ERROR_SETTLE_MS
-      this.lastErrorSeq = errorSeq
+    if (snapshot.nodes.length !== this.lastNodeCount) {
+      this.lastNodeCount = snapshot.nodes.length
+      const tail = snapshot.nodes.slice(-4).map(node => ({
+        kind: node.kind,
+        seq: node.seq,
+        time: node.time,
+        isError: node.isError,
+        exitCode: node.resultView?.exitCode,
+      }))
+      console.debug('[ui-whale-pet] conversation nodes ->', snapshot.nodes.length, JSON.stringify(tail))
+    }
+    if (mark !== null && mark.seq > this.lastErrorSeq) {
+      const timestamped = Number.isFinite(mark.time)
+      const fresh = timestamped
+        ? mark.time >= this.boundAt
+        : now - this.boundAt >= ERROR_SETTLE_MS
+      this.lastErrorSeq = mark.seq
       this.lastAgentError = agentError
-      if (settled) {
+      if (fresh) {
         this.transient = { mood: 'error', until: now + ERROR_MS }
         this.service.playEffect('sweat')
       }

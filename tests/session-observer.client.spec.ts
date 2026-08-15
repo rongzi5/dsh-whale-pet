@@ -74,6 +74,7 @@ describe('SessionWhaleObserver', () => {
     }
     const service = new WhalePetService()
     const observer = new SessionWhaleObserver({ sessions }, service)
+    service.bindObserver(observer)
     return { conversation, goal, list, observer, plan, service, sessions }
   }
 
@@ -137,6 +138,26 @@ describe('SessionWhaleObserver', () => {
     service.dispose()
   })
 
+  it('fires immediately for a genuinely new failure inside the settle window', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+
+    conversation.set({
+      running: true,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'tool-result', seq: 2, time: Date.now(), isError: true }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+
+    expect(service.getSnapshot().activity.mood).toBe('error')
+    expect(service.getSnapshot().effects.some(effect => effect.kind === 'sweat')).toBe(true)
+
+    observer.dispose()
+    service.dispose()
+  })
+
   it('shows a sweat effect and error mood for tool failures', () => {
     const { conversation, observer, service } = setup()
     observer.start()
@@ -146,7 +167,7 @@ describe('SessionWhaleObserver', () => {
       running: true,
       partial: null,
       runningCalls: [],
-      nodes: [{ kind: 'tool-result', seq: 4, isError: true }],
+      nodes: [{ kind: 'tool-result', seq: 4, isError: false, resultView: { exitCode: 7 } }],
       lastAgentError: 'boom',
     })
     vi.advanceTimersByTime(200)
@@ -243,6 +264,11 @@ describe('SessionWhaleObserver', () => {
     vi.advanceTimersByTime(61_000)
 
     expect(service.getSnapshot().activity.mood).toBe('sleeping')
+
+    // Hover/drag wakes the pet and resets the idle clock.
+    service.wake()
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('idle')
 
     observer.dispose()
     service.dispose()

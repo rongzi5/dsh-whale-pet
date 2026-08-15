@@ -182,6 +182,15 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
         } catch {
           return undefined
         }
+      }, () => {
+        if (settings === null) return undefined
+        try {
+          const value = settings.get(settingsNamespace('agent-default-model')) as { provider?: unknown; model?: unknown } | undefined
+          if (typeof value?.provider !== 'string' || typeof value?.model !== 'string') return undefined
+          return { provider: value.provider, model: value.model }
+        } catch {
+          return undefined
+        }
       }),
     }), 'ui-whale-pet: subagent task')
   }

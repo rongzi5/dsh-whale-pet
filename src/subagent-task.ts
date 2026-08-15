@@ -36,7 +36,7 @@ export interface TaskResponse {
   /** Whether the child finished within the timeout. */
   completed: boolean
   /** Diagnostic: how the child settled and how many events it produced. */
-  debug?: { stopReason: string; eventCount: number }
+  debug?: { stopReason: string; eventCount: number; eventTypes?: string[]; turnEndReason?: unknown }
 }
 
 /** Extract the plain text from a result's content blocks. */
@@ -106,6 +106,7 @@ export function createTaskHandler(
   sessions: SessionStore | null,
   workspaceRoot: () => string | undefined,
   defaultPreset: () => string | undefined = () => undefined,
+  defaultModel: () => { provider?: string; model?: string } | undefined = () => undefined,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
@@ -157,6 +158,10 @@ export function createTaskHandler(
           : undefined
         const resolvedCwd = cwd ?? workspaceRoot()
         const preset = defaultPreset()
+        const model = defaultModel()
+        const agentOptions = model?.provider !== undefined && model?.model !== undefined
+          ? { provider: model.provider, model: model.model }
+          : undefined
         const handle = await agents.create({
           sessionId: SessionId(randomUUID()),
           meta: {
@@ -165,6 +170,7 @@ export function createTaskHandler(
             origin: 'subagent',
             delegationDepth: 1,
           },
+          ...(agentOptions !== undefined ? { agentOptions } : {}),
         })
         parentHandle = handle
         parent = handle.agent
@@ -180,12 +186,19 @@ export function createTaskHandler(
       let completed = true
       let stopReason = 'unknown'
       let eventCount = 0
+      let eventTypes: string[] = []
+      let turnEndReason: unknown
       try {
         const result = await run.result
         stopReason = result.stopReason
         output = textOf(result.output).slice(0, TASK_OUTPUT_LIMIT)
         const events = run.localAgent?.session.events ?? []
         eventCount = events.length
+        eventTypes = events.map(event => event.type)
+        const lastEnd = [...events].reverse().find(event => event.type === 'turn/end')
+        if (lastEnd !== undefined) {
+          turnEndReason = ((lastEnd as { data?: { reason?: unknown } }).data ?? {}).reason
+        }
         if (output === '' && result.stopReason === 'error') {
           // The child's turn errored without a final assistant text: surface
           // the failure detail from the event log so the pet can report it.
@@ -213,7 +226,7 @@ export function createTaskHandler(
         output,
         sessionId: run.id,
         completed,
-        debug: { stopReason, eventCount },
+        debug: { stopReason, eventCount, eventTypes, turnEndReason },
       }
       sendJson(res, 200, response)
     } finally {

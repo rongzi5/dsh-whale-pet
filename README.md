@@ -16,6 +16,22 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
 - Uses exponential, non-overshooting drag follow and frame-rate-independent release inertia.
 - Integrates animation phase over time so changing speed cannot jump the body, tail, or fins.
 
+## Interactions and persistence
+
+- **Click recap** — clicking the pet cycles a speech bubble through the name/days
+  entry and recent session events (completed long turns, goal/plan milestones,
+  tool failures with tool name and exit code, "waiting for your input").
+- **Right-click menu** — rename the pet, toggle corner snapping, glide back to a
+  corner, or hide it. The menu is keyboard-accessible (Enter/Space) and closes
+  on outside click or Escape.
+- **Corner snapping** — real drags (beyond the click threshold) glide to the
+  nearest corner on release; toggle it from the menu.
+- **`Ctrl`/`Cmd` + `Alt` + `W`** — toggle the pet's visibility from anywhere;
+  the shortcut works even when the pet is hidden.
+- **Persistence** — the pet's name, position, hidden state and snap preference
+  survive reloads through `localStorage` (guarded against private mode), and
+  the recap tracks the days you have spent together.
+
 ## Session integration
 
 The plugin observes the current DSH session through `ctx.sessions` and drives
@@ -30,12 +46,13 @@ reaction.
 | One turn runs longer than 20s | `focused`: a slight dive posture |
 | Tool fails (non-zero exit code or error node) | `error`: sweat drop + startled eyes for 8s |
 | Long turn (≥15s), goal completion, or plan exit | `celebrating`: a 360° elliptical lap with continuous yaw and screen-space depth, while hearts stream every 650ms |
+| The agent finished its turn and waits for your reply | `listening`: rests, gazes at the input area, shows a floating "？", and recaps "等你输入…" on click |
 | Hover or drag while sleeping | Wakes immediately and resets the idle clock |
 | No activity for 60s | `sleeping`: closed eyes, slow breathing, z-z-z |
 
 Debug attributes on the pet element:
 
-- `data-whale-activity` — current mood (`idle`, `thinking`, `working`, `focused`, `celebrating`, `error`, `sleeping`)
+- `data-whale-activity` — current mood (`idle`, `thinking`, `working`, `focused`, `celebrating`, `error`, `sleeping`, `listening`)
 - `data-whale-bridge` — session bridge state (`off`, `waiting`, `bound`)
 
 ## Installation

@@ -43,6 +43,7 @@ interface ConversationNodeLike {
   time?: number
   isError?: boolean
   resultView?: { exitCode?: number }
+  call?: { name?: string } | null
 }
 
 interface GoalProjectionLike {
@@ -80,24 +81,54 @@ interface TransientMood {
 interface ErrorMark {
   seq: number
   time: number
+  kind: 'tool-result' | 'turn-error'
+  exitCode?: number
+  toolName?: string
 }
 
 function latestError(nodes: readonly ConversationNodeLike[]): ErrorMark | null {
   let seq = -1
   let time = -Infinity
+  let kind: ErrorMark['kind'] | undefined
+  let exitCode: number | undefined
+  let toolName: string | undefined
   for (const node of nodes) {
-    const exitCode = node.resultView?.exitCode
+    const exit = node.resultView?.exitCode
     const failed = node.kind === 'turn-error'
-      || (node.kind === 'tool-result' && (node.isError === true || (typeof exitCode === 'number' && exitCode !== 0)))
+      || (node.kind === 'tool-result' && (node.isError === true || (typeof exit === 'number' && exit !== 0)))
     if (failed) {
       const next = node.seq ?? 0
       if (next >= seq) {
         seq = next
         time = node.time ?? time
+        kind = node.kind === 'turn-error' ? 'turn-error' : 'tool-result'
+        exitCode = typeof exit === 'number' ? exit : undefined
+        toolName = typeof node.call?.name === 'string' ? node.call.name : undefined
       }
     }
   }
-  return seq < 0 ? null : { seq, time }
+  if (seq < 0 || kind === undefined) return null
+  return { seq, time, kind, ...(exitCode !== undefined ? { exitCode } : {}), ...(toolName !== undefined ? { toolName } : {}) }
+}
+
+/** Highest seq of a landed user message; -1 when the window has none. */
+function latestUserSeq(nodes: readonly ConversationNodeLike[]): number {
+  let seq = -1
+  for (const node of nodes) {
+    if (node.kind === 'user') seq = Math.max(seq, node.seq ?? 0)
+  }
+  return seq
+}
+
+/** One-line recap text for a fresh failure node. */
+function errorRecapText(mark: ErrorMark): string {
+  if (mark.kind === 'turn-error') return '回合出错'
+  const name = mark.toolName
+  const exit = mark.exitCode
+  if (name !== undefined && exit !== undefined) return `${name} 失败（exit ${exit}）`
+  if (name !== undefined) return `${name} 失败`
+  if (exit !== undefined) return `工具失败（exit ${exit}）`
+  return '工具调用失败'
 }
 
 /**
@@ -111,12 +142,18 @@ export function deriveWhaleActivity(
     running: boolean
     turnStartedAt: number
     lastActivityAt: number
+    awaitingInput: boolean
   },
 ): WhaleActivity {
   if (state.active) {
     const runningMs = state.running ? now - state.turnStartedAt : 0
     if (runningMs >= FOCUS_AFTER_MS) return { mood: 'focused', intensity: 1 }
     return { mood: state.running ? 'working' : 'thinking', intensity: 0.7 }
+  }
+  // The agent finished its turn and is waiting for the user to reply: the
+  // pet stays attentive (but not "active") until a user message lands.
+  if (state.awaitingInput && now - state.lastActivityAt < IDLE_SLEEP_MS) {
+    return { mood: 'listening', intensity: 0.6 }
   }
   if (!state.running && now - state.lastActivityAt >= IDLE_SLEEP_MS) {
     return { mood: 'sleeping', intensity: 1 }
@@ -145,6 +182,8 @@ export class SessionWhaleObserver {
   private lastMood: WhaleActivity['mood'] | null = null
   private boundAt = 0
   private lastNodeCount = -1
+  private awaitingInput = false
+  private lastUserSeq = -1
   private disposed = false
 
   public constructor(
@@ -229,6 +268,8 @@ export class SessionWhaleObserver {
       this.knownPlanActive = undefined
       this.transient = null
       this.boundAt = 0
+      this.awaitingInput = false
+      this.lastUserSeq = -1
       if (current === undefined) {
         this.applyActivity({ mood: 'idle', intensity: 0 })
       }
@@ -248,6 +289,8 @@ export class SessionWhaleObserver {
     this.lastActivityAt = Date.now()
     this.lastErrorSeq = latestError(snapshot.nodes)?.seq ?? -1
     this.lastAgentError = snapshot.lastAgentError ?? null
+    this.lastUserSeq = latestUserSeq(snapshot.nodes)
+    this.awaitingInput = false
     console.debug('[ui-whale-pet] session bridge bound', current, {
       running: snapshot.running,
       calls: snapshot.runningCalls.length,
@@ -276,6 +319,13 @@ export class SessionWhaleObserver {
     const active = snapshot.running || hasPartial || hasCalls
     if (active) this.lastActivityAt = now
 
+    // A landed user message ends the "waiting for input" window.
+    const userSeq = latestUserSeq(snapshot.nodes)
+    if (userSeq > this.lastUserSeq) {
+      this.lastUserSeq = userSeq
+      this.awaitingInput = false
+    }
+
     // Tool/turn failures: react once per new failure node. History windows
     // load asynchronously after binding, so late-arriving OLD nodes (time
     // before the bind) are absorbed, while a genuinely new failure fires
@@ -303,27 +353,42 @@ export class SessionWhaleObserver {
       if (fresh) {
         this.transient = { mood: 'error', until: now + ERROR_MS }
         this.service.playEffect('sweat')
+        this.service.pushRecap(errorRecapText(mark))
       }
     }
 
     // Turn boundaries: celebrate long completed turns, goals, and plans.
-    if (snapshot.running && !this.wasRunning) this.turnStartedAt = now
+    if (snapshot.running && !this.wasRunning) {
+      this.turnStartedAt = now
+      this.awaitingInput = false
+    }
     if (!snapshot.running && this.wasRunning) {
       const turnMs = now - this.turnStartedAt
       if (turnMs >= LONG_TURN_MS && (this.transient === null || this.transient.mood !== 'error')) {
         this.celebrate(now)
+        this.service.pushRecap('长回合完成 🎉')
       }
+      // The agent handed the conversation back: the pet waits for input.
+      this.awaitingInput = true
     }
 
     const goalPhase = readGoalPhase(this.goalFace)
     if (goalPhase !== undefined && this.knownGoalPhase !== undefined && goalPhase !== this.knownGoalPhase) {
-      if (this.knownGoalPhase !== 'complete' && goalPhase === 'complete') this.celebrate(now)
+      if (this.knownGoalPhase !== 'complete' && goalPhase === 'complete') {
+        this.celebrate(now)
+        this.service.pushRecap('goal 达成 🎉')
+      } else if (goalPhase !== 'complete') {
+        this.service.pushRecap(`goal 阶段：${goalPhase}`)
+      }
     }
     if (goalPhase !== undefined) this.knownGoalPhase = goalPhase
 
     const planActive = readPlanActive(this.planFace)
     if (planActive !== undefined && this.knownPlanActive !== undefined && planActive !== this.knownPlanActive) {
-      if (this.knownPlanActive && !planActive) this.celebrate(now)
+      if (this.knownPlanActive && !planActive) {
+        this.celebrate(now)
+        this.service.pushRecap('退出 plan')
+      }
     }
     if (planActive !== undefined) this.knownPlanActive = planActive
 
@@ -343,6 +408,7 @@ export class SessionWhaleObserver {
       running: snapshot.running,
       turnStartedAt: this.turnStartedAt,
       lastActivityAt: this.lastActivityAt,
+      awaitingInput: this.awaitingInput,
     })
 
     // Thinking/working/focused keeps a slow stream of bubbles so the
@@ -353,6 +419,11 @@ export class SessionWhaleObserver {
     ) {
       this.lastActivityBubbleAt = now
       this.service.playEffect('bubble')
+    }
+
+    // Entering the listening mood once per turn hand-back.
+    if (mood.mood === 'listening' && this.lastMood !== 'listening') {
+      this.service.pushRecap('等你输入…')
     }
 
     this.applyActivity(mood)

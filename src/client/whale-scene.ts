@@ -1053,7 +1053,9 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
             ? 1.5 + 0.25 * intensity
             : mood === 'celebrating'
               ? 1.7
-              : 1
+              : mood === 'listening'
+                ? 0.85
+                : 1
     let swimSpeed = CFG.SWIM_SPEED * (1 + f.speed * 1.55)
     if (hover > 0.5) swimSpeed *= CFG.HOVER_SWIM_BOOST
     swimSpeed *= swimBoost
@@ -1061,7 +1063,11 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
 
     const t = elapsedSeconds
     const bodyAmp = CFG.BODY_SWAY_AMPLITUDE * (
-      mood === 'sleeping' ? 0.35 : mood === 'working' || mood === 'focused' ? 1.25 : mood === 'celebrating' ? 1.4 : 1
+      mood === 'sleeping' ? 0.35
+        : mood === 'working' || mood === 'focused' ? 1.25
+          : mood === 'celebrating' ? 1.4
+            : mood === 'listening' ? 0.8
+              : 1
     )
     const pitchAmp = CFG.PITCH_AMPLITUDE * (mood === 'sleeping' ? 0.4 : 1)
     const rollAmp = CFG.ROLL_AMPLITUDE * (mood === 'sleeping' ? 0.5 : 1)
@@ -1114,7 +1120,12 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
     tailGroup.rotation.z = (CFG.TAIL_TILT_DEG * Math.PI) / 180
 
     // pectoral fins: flapping + steering
-    const pecAmp = CFG.PEC_FLAP_AMPLITUDE * (mood === 'sleeping' ? 0.3 : mood === 'working' || mood === 'focused' ? 1.3 : 1)
+    const pecAmp = CFG.PEC_FLAP_AMPLITUDE * (
+      mood === 'sleeping' ? 0.3
+        : mood === 'working' || mood === 'focused' ? 1.3
+          : mood === 'listening' ? 0.8
+            : 1
+    )
     const pecFlap = Math.sin(swimPhase + CFG.PEC_FLAP_PHASE) * pecAmp
     for (const { pivot, side } of finPivots) {
       pivot.rotation.x = pecFlap + motionWave * patrolEnergy * 0.3 - dragEnergy * 0.52
@@ -1123,7 +1134,12 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
 
     // gentle float (fixed frequency) + hover bob + motion bounce
     const floatSpeed = CFG.FLOAT_SPEED * (mood === 'sleeping' ? 0.45 : 1)
-    const floatAmp = CFG.FLOAT_AMPLITUDE * (mood === 'sleeping' ? 0.4 : mood === 'celebrating' ? 1.5 : 1)
+    const floatAmp = CFG.FLOAT_AMPLITUDE * (
+      mood === 'sleeping' ? 0.4
+        : mood === 'celebrating' ? 1.5
+          : mood === 'listening' ? 0.8
+            : 1
+    )
     const floatOffset = Math.sin(t * floatSpeed) * floatAmp
     model.position.y =
       petBaseY + floatOffset + hover * Math.sin(t * 8) * 0.035 + motionBounce * patrolEnergy * 0.085 + motionWave * dragEnergy * 0.035

@@ -1,24 +1,34 @@
 /**
- * Whale pet runtime service: the single owner of motion, scene mount and
- * transient effect counters. The React overlay only renders
- * {@link WhalePetViewSnapshot}; session state and other future plugins drive
- * the same service through {@link setActivity} and {@link playEffect}.
+ * Whale pet runtime service: the single owner of motion, scene mount,
+ * transient effect counters, recap history and persisted user state. The
+ * React overlay only renders {@link WhalePetViewSnapshot}; session state and
+ * other future plugins drive the same service through {@link setActivity},
+ * {@link playEffect} and {@link pushRecap}.
  */
 import { type WhaleActivity, type WhaleBridgeState, type WhaleEffectKind, type WhalePetViewSnapshot } from '../activity.ts';
 import { type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts';
 import type { SessionWhaleObserver } from './session-observer.ts';
+import { type StorageLike } from '../persistence.ts';
 export declare class WhalePetService {
+    private readonly storage;
     private readonly controller;
     private readonly listeners;
     private readonly timers;
+    private readonly persisted;
     private activity;
     private effects;
     private bridge;
-    private snapshot;
+    private recapHistory;
+    private recapIndex;
+    private recapCurrent;
+    private recapTimer;
     private nextEffectId;
+    private nextRecapId;
     private observer;
+    private snapshot;
     private disposed;
-    /** Mount the view's DOM handles. Delegates to the controller unchanged. */
+    constructor(storage?: StorageLike | null);
+    /** Mount the view's DOM handles; restores the persisted position. Delegates to the controller unchanged. */
     mount(targets: WhalePetTargets, hooks: WhalePetControllerHooks): boolean;
     /** Unmount the current view surface without dropping the service or motion state. */
     unmount(): void;
@@ -34,6 +44,22 @@ export declare class WhalePetService {
     setActivity(activity: WhaleActivity): void;
     /** Update the session-bridge lifecycle state (observer-owned). */
     setBridgeState(bridge: WhaleBridgeState): void;
+    /** Rename the pet; persists and publishes the new name. */
+    setName(name: string): void;
+    /** Hide or show the pet; persists the choice and pauses rendering while hidden. */
+    setHidden(hidden: boolean): void;
+    /** Toggle visibility; returns the new hidden state. */
+    toggleHidden(): boolean;
+    /** Toggle corner snapping for released drags; persists the choice. */
+    setSnapToCorner(enabled: boolean): void;
+    /** Glide to the nearest corner immediately (context-menu action). */
+    snapToCornerNow(): void;
+    /** Persist the pet position after a drag release. */
+    persistPosition(x: number, y: number): void;
+    /** Record one session/interaction event for the click recap (dedupes repeats). */
+    pushRecap(text: string): void;
+    /** Cycle to the next recap bubble (name/days entry first, then recent events). */
+    nextRecap(): void;
     /** Current stable view snapshot for useSyncExternalStore. */
     getSnapshot(): WhalePetViewSnapshot;
     /** Subscribe to snapshot changes. */
@@ -48,7 +74,10 @@ export declare class WhalePetService {
     /** Celebration: hearts keep appearing for the whole loop, plus bubbles. */
     celebrate(): void;
     private scheduleCelebrationHearts;
+    private scheduleRecapClear;
+    private nameRecap;
     /** Release timers, listeners and the WebGL surface. */
     dispose(): void;
+    private buildSnapshot;
     private publish;
 }

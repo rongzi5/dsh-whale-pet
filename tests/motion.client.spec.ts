@@ -158,4 +158,63 @@ describe('WhaleMotionController', () => {
     expect(minX).toBeGreaterThanOrEqual(14)
     expect(minY).toBeGreaterThanOrEqual(24)
   })
+
+  it('restores a persisted position clamped to the viewport', () => {
+    const motion = new WhaleMotionController(1280, 720, fixedRandom)
+    motion.restorePosition(40, 40)
+    let view = motion.step(1 / 60)
+    expect(view.x).toBe(40)
+    expect(view.y).toBe(40)
+
+    motion.restorePosition(-50, 10_000)
+    view = motion.step(1 / 60)
+    expect(view.x).toBe(14)
+    expect(view.y).toBe(720 - PET_HEIGHT - 14)
+  })
+
+  it('glides released drags to the nearest corner when snapping is enabled', () => {
+    const motion = new WhaleMotionController(1280, 720, fixedRandom)
+    motion.restorePosition(60, 40)
+    motion.step(1 / 60)
+    motion.beginDrag(220, 160)
+    motion.pointerMove(20, 160)
+    expect(motion.releaseDrag()).toBe(true)
+
+    let view = motion.step(1 / 60)
+    for (let frame = 0; frame < 240; frame += 1) view = motion.step(1 / 60)
+
+    // (60, 40) is closest to the top-left corner.
+    expect(view.x).toBeCloseTo(14, 1)
+    expect(view.y).toBeCloseTo(24, 1)
+    expect(view.dragging).toBe(false)
+  })
+
+  it('keeps click-like releases in place when corner snapping is enabled', () => {
+    const motion = new WhaleMotionController(1280, 720, fixedRandom)
+    motion.restorePosition(600, 300)
+    motion.step(1 / 60)
+    motion.beginDrag(760, 420)
+    motion.pointerMove(757, 420)
+    expect(motion.releaseDrag()).toBe(true)
+
+    let view = motion.step(1 / 60)
+    for (let frame = 0; frame < 120; frame += 1) view = motion.step(1 / 60)
+
+    expect(view.x).toBeCloseTo(600, 0)
+    expect(view.y).toBeCloseTo(300, 0)
+  })
+
+  it('paces the listening mood faster than idle but without active patrols', () => {
+    const motion = new WhaleMotionController(1280, 720, fixedRandom)
+    motion.setActivity({ mood: 'listening', intensity: 0.6 })
+    // One warm-up step already consumed one clock frame.
+    let view = motion.step(0.04)
+
+    // Initial patrol clock is 55s; listening pace (1.6) reaches zero on
+    // frame 860, whereas plain idle (pace 1) would need 1375 frames.
+    for (let frame = 0; frame < 858; frame += 1) view = motion.step(0.04)
+    expect(view.mode).toBe(0)
+    view = motion.step(0.04)
+    expect(view.mode).toBe(1)
+  })
 })

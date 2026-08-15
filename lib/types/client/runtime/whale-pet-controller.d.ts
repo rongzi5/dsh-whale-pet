@@ -23,6 +23,8 @@ export interface WhalePetTargets {
 export interface WhalePetControllerHooks {
     /** Called when the Three.js scene cannot be created or rendered. */
     onError(message: string): void;
+    /** Called after a drag release with the pet's final position (px). */
+    onRelease?(x: number, y: number): void;
 }
 export declare class WhalePetController {
     private readonly motion;
@@ -35,6 +37,7 @@ export declare class WhalePetController {
     private currentDpr;
     private activity;
     private lastYaw;
+    private hidden;
     constructor(motion?: WhaleMotionController);
     /**
      * Mount the runtime onto the view's DOM handles. Idempotent: a repeated
@@ -66,6 +69,8 @@ export declare class WhalePetController {
     wasClick(maximumDrag?: number): boolean;
     /** Update the session-driven mood before the next rendered frame. */
     setActivity(activity: WhaleActivity): void;
+    /** Pause rendering and motion while the pet is hidden. */
+    setHidden(hidden: boolean): void;
     /** Run the motion layer's longer celebration lap. */
     celebrate(): void;
     /** Latest rendered model yaw; used to anchor effects like bubbles. */

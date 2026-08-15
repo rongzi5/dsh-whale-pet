@@ -19,6 +19,8 @@ export type WhaleMood =
   | 'error'
   /** No activity for a long time. */
   | 'sleeping'
+  /** The agent finished its turn and is waiting for the user to reply. */
+  | 'listening'
 
 export interface WhaleActivity {
   mood: WhaleMood
@@ -38,11 +40,26 @@ export interface WhaleEffect {
 /** Session-bridge lifecycle, surfaced for diagnostics and DOM inspection. */
 export type WhaleBridgeState = 'off' | 'waiting' | 'bound'
 
+/** One recap bubble shown after a click: a name/days entry or a session event. */
+export interface WhaleRecap {
+  id: number
+  /** Stable key used to restart the bubble animation per entry. */
+  text: string
+}
+
 /** Stable view snapshot consumed through useSyncExternalStore. */
 export interface WhalePetViewSnapshot {
   activity: WhaleActivity
   effects: readonly WhaleEffect[]
   bridge: WhaleBridgeState
+  /** Persisted user-given name. */
+  name: string
+  /** Whether the pet is hidden by the keyboard shortcut. */
+  hidden: boolean
+  /** Whether released drags glide to the nearest corner. */
+  snapToCorner: boolean
+  /** The recap bubble currently visible, or null. */
+  recap: WhaleRecap | null
 }
 
 export const IDLE_ACTIVITY: WhaleActivity = Object.freeze({ mood: 'idle', intensity: 0 })

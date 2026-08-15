@@ -23,15 +23,24 @@ function createObservable<T>(initial: T): ObservableLike<T> & { set(value: T): v
 describe('deriveWhaleActivity', () => {
   it('derives working/thinking/focused from an active session', () => {
     const now = 100_000
-    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 1_000, lastActivityAt: now })).toEqual({ mood: 'working', intensity: 0.7 })
-    expect(deriveWhaleActivity(now, { active: true, running: false, turnStartedAt: now, lastActivityAt: now })).toEqual({ mood: 'thinking', intensity: 0.7 })
-    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 21_000, lastActivityAt: now })).toEqual({ mood: 'focused', intensity: 1 })
+    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 1_000, lastActivityAt: now, awaitingInput: false })).toEqual({ mood: 'working', intensity: 0.7 })
+    expect(deriveWhaleActivity(now, { active: true, running: false, turnStartedAt: now, lastActivityAt: now, awaitingInput: false })).toEqual({ mood: 'thinking', intensity: 0.7 })
+    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 21_000, lastActivityAt: now, awaitingInput: false })).toEqual({ mood: 'focused', intensity: 1 })
   })
 
   it('falls asleep only after a long quiet period', () => {
     const now = 100_000
-    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 10_000 })).toEqual({ mood: 'idle', intensity: 0 })
-    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 61_000 })).toEqual({ mood: 'sleeping', intensity: 1 })
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 10_000, awaitingInput: false })).toEqual({ mood: 'idle', intensity: 0 })
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 61_000, awaitingInput: false })).toEqual({ mood: 'sleeping', intensity: 1 })
+  })
+
+  it('derives listening while awaiting user input within the sleep window', () => {
+    const now = 100_000
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 5_000, awaitingInput: true })).toEqual({ mood: 'listening', intensity: 0.6 })
+    // Activity wins over the awaiting flag…
+    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 1_000, lastActivityAt: now, awaitingInput: true })).toEqual({ mood: 'working', intensity: 0.7 })
+    // …and so does the long-quiet sleep rule.
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 61_000, awaitingInput: true })).toEqual({ mood: 'sleeping', intensity: 1 })
   })
 })
 
@@ -254,7 +263,7 @@ describe('SessionWhaleObserver', () => {
     service.dispose()
   })
 
-  it('falls asleep after a long quiet period', () => {
+  it('falls asleep after a long quiet period and wakes into listening', () => {
     const { conversation, observer, service } = setup()
     observer.start()
 
@@ -277,10 +286,101 @@ describe('SessionWhaleObserver', () => {
 
     expect(service.getSnapshot().activity.mood).toBe('sleeping')
 
-    // Hover/drag wakes the pet and resets the idle clock.
+    // Hover/drag wakes the pet and resets the idle clock; since the agent
+    // still owes the user a reply, the pet wakes into listening.
     service.wake()
     vi.advanceTimersByTime(200)
-    expect(service.getSnapshot().activity.mood).toBe('idle')
+    expect(service.getSnapshot().activity.mood).toBe('listening')
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('turns the pet to listening when the agent hands the turn back', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+
+    conversation.set({
+      running: true,
+      partial: { blocks: [1] },
+      runningCalls: [],
+      nodes: [],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('working')
+
+    conversation.set({
+      running: false,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'assistant', seq: 5 }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('listening')
+
+    // The waiting recap is queued and surfaces on the next click.
+    service.nextRecap()
+    expect(service.getSnapshot().recap?.text).toBe('等你输入…')
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('leaves listening when the user starts a new turn', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+
+    conversation.set({
+      running: true,
+      partial: { blocks: [1] },
+      runningCalls: [],
+      nodes: [{ kind: 'user', seq: 1 }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    conversation.set({
+      running: false,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'user', seq: 1 }, { kind: 'assistant', seq: 5 }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('listening')
+
+    // A new user message starts a fresh turn: back to work.
+    conversation.set({
+      running: true,
+      partial: { blocks: [1] },
+      runningCalls: [],
+      nodes: [{ kind: 'user', seq: 6 }, { kind: 'assistant', seq: 5 }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('working')
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('records an error recap naming the failed tool', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+    vi.advanceTimersByTime(3_000)
+
+    conversation.set({
+      running: true,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'tool-result', seq: 4, isError: false, call: { name: 'bash' }, resultView: { exitCode: 7 } }],
+      lastAgentError: 'boom',
+    })
+    vi.advanceTimersByTime(200)
+
+    service.nextRecap()
+    expect(service.getSnapshot().recap?.text).toBe('bash 失败（exit 7）')
 
     observer.dispose()
     service.dispose()

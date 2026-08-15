@@ -6,6 +6,10 @@
   contain: layout style paint;
 }
 
+.hidden {
+  display: none;
+}
+
 .pet {
   position: absolute;
   top: 0;
@@ -130,6 +134,90 @@
   pointer-events: none;
 }
 
+.speech {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  z-index: 5;
+  max-width: 240px;
+  padding: 6px 11px;
+  border-radius: 12px;
+  border: 1px solid rgb(77 107 254 / 28%);
+  background: rgb(255 255 255 / 94%);
+  color: #23315e;
+  font: 600 12px/1.4 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 14px rgb(18 27 62 / 16%);
+  pointer-events: none;
+  animation: speech-pop 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform: translateX(-50%);
+}
+
+.speech::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  border: 6px solid transparent;
+  border-top-color: rgb(77 107 254 / 28%);
+  transform: translateX(-50%);
+}
+
+.listeningMark {
+  position: absolute;
+  top: 12px;
+  left: 176px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgb(77 107 254 / 14%);
+  color: #4d6bfe;
+  font: 800 14px/1 system-ui, sans-serif;
+  pointer-events: none;
+  animation: mark-float 1700ms ease-in-out infinite;
+}
+
+.menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 148px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgb(77 107 254 / 22%);
+  background: rgb(255 255 255 / 97%);
+  box-shadow: 0 8px 24px rgb(18 27 62 / 18%);
+  pointer-events: auto;
+  animation: menu-pop 160ms ease-out;
+}
+
+.menuItem {
+  display: block;
+  width: 100%;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: transparent;
+  color: #23315e;
+  font: 600 12px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: rgb(77 107 254 / 10%);
+}
+
+.menuItem:focus-visible {
+  outline: 2px solid rgb(77 107 254 / 40%);
+  outline-offset: -1px;
+}
+
 .bubble {
   position: absolute;
   top: 74px;
@@ -252,11 +340,51 @@
   }
 }
 
+@keyframes speech-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 6px) scale(0.85);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes mark-float {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+
+  50% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+@keyframes menu-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .heart,
   .bubble,
   .sweat,
-  .sleepMark {
+  .sleepMark,
+  .speech,
+  .listeningMark,
+  .menu {
     animation-duration: 1ms;
     animation-iteration-count: 1;
   }

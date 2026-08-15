@@ -4,7 +4,8 @@ export { WhaleMotionController, type WhaleMotionFrame } from './motion.ts';
 export { WhalePet, type WhalePetProps } from './WhalePet.tsx';
 export { SessionWhaleObserver, deriveWhaleActivity } from './runtime/session-observer.ts';
 export { WhalePetService } from './runtime/whale-pet-service.ts';
-export type { WhaleActivity, WhaleEffect, WhaleEffectKind, WhaleMood } from './activity.ts';
+export { loadWhalePetState, saveWhalePetState, WHALE_PET_DEFAULTS, type WhalePetPersistedState } from './persistence.ts';
+export type { WhaleActivity, WhaleEffect, WhaleEffectKind, WhaleMood, WhaleRecap } from './activity.ts';
 export type { WhaleExternalState, WhaleScene } from './whale-scene.ts';
 /** Required services: slot registry plus the sessions bridge. */
 export declare const inject: string[];

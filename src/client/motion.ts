@@ -6,6 +6,9 @@ export const PET_HEIGHT = 240
 const MIN_X = 14
 const MIN_Y = 24
 
+/** Minimum drag distance (px) before a release counts as a real drag that may snap to a corner. */
+const CORNER_SNAP_MIN_DRAG_PX = 24
+
 type PetMode = 'idle' | 'patrol' | 'dragging' | 'settling' | 'loop'
 export type WhaleMotionMode = 0 | 1 | 2 | 3
 
@@ -82,6 +85,11 @@ export class WhaleMotionController {
   private motionDirectionX = 0
   private motionDirectionY = 0
   private motionSpeed = 0
+
+  private snapToCorner = true
+  private settlingToCorner = false
+  private settleTargetX = 0
+  private settleTargetY = 0
 
   private nextLook: number
   private lookTime = 0
@@ -168,13 +176,80 @@ export class WhaleMotionController {
     if (!this.dragging) return false
     this.dragging = false
     this.hovering = false
-    this.mode = 'settling'
-    this.moveTime = 0
     this.vx = this.motionVelocityX * 0.45
     this.vy = this.motionVelocityY * 0.45
     this.nextPatrol = 55 + this.random() * 35
     this.nextLook = 12 + this.random() * 18
+    this.mode = 'settling'
+    this.moveTime = 0
+    // Real drags (beyond the click threshold) glide to the nearest corner
+    // when corner snapping is enabled; click-like releases stay in place.
+    if (this.snapToCorner && this.dragDistance >= CORNER_SNAP_MIN_DRAG_PX) {
+      this.beginCornerSnap()
+    } else {
+      this.settlingToCorner = false
+    }
     return true
+  }
+
+  /** Whether released drags glide to the nearest corner. */
+  public setSnapToCorner(enabled: boolean): void {
+    this.snapToCorner = enabled
+    if (!enabled) this.settlingToCorner = false
+  }
+
+  /** Glide to the nearest corner now (context-menu action); no-op while dragging. */
+  public snapToCornerNow(): void {
+    if (this.dragging || this.mode === 'loop') return
+    this.beginCornerSnap()
+  }
+
+  /** Restore a persisted position, clamped to the current viewport. */
+  public restorePosition(x: number | null, y: number | null): void {
+    if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return
+    this.x = clamp(x, MIN_X, this.maxX())
+    this.y = clamp(y, MIN_Y, this.maxY())
+    this.dragTargetX = this.x
+    this.dragTargetY = this.y
+    this.startX = this.x
+    this.startY = this.y
+  }
+
+  /** Current pet top-left position (CSS pixels). */
+  public get position(): { x: number; y: number } {
+    return { x: this.x, y: this.y }
+  }
+
+  private beginCornerSnap(): void {
+    const corner = this.nearestCorner()
+    this.settlingToCorner = true
+    this.settleTargetX = corner.x
+    this.settleTargetY = corner.y
+    this.mode = 'settling'
+    this.moveTime = 0
+    this.vx = 0
+    this.vy = 0
+  }
+
+  private nearestCorner(): { x: number; y: number } {
+    const candidates: { x: number; y: number }[] = [
+      { x: MIN_X, y: MIN_Y },
+      { x: this.maxX(), y: MIN_Y },
+      { x: MIN_X, y: this.maxY() },
+      { x: this.maxX(), y: this.maxY() },
+    ]
+    const [first, ...rest] = candidates
+    if (first === undefined) throw new Error('corner candidate list must not be empty')
+    let best = first
+    let bestDistance = Math.hypot(first.x - this.x, first.y - this.y)
+    for (const candidate of rest) {
+      const distance = Math.hypot(candidate.x - this.x, candidate.y - this.y)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        best = candidate
+      }
+    }
+    return best
   }
 
   public setHover(hovering: boolean): void {
@@ -265,7 +340,9 @@ export class WhaleMotionController {
             ? 2.5
             : this.activity.mood === 'celebrating'
               ? 4
-              : 1
+              : this.activity.mood === 'listening'
+                ? 1.6
+                : 1
           this.nextLook -= dt * activePace
           this.nextPatrol -= dt * activePace
           if (this.nextLook <= 0) {
@@ -319,7 +396,7 @@ export class WhaleMotionController {
 
     if (!this.dragging && this.mode !== 'patrol' && this.mode !== 'loop') {
       const mood = this.activity.mood
-      const sessionFocused = isSessionEngaged(mood)
+      const sessionFocused = isSessionEngaged(mood) || mood === 'listening'
       if (this.hovering || this.lookTime > 0) {
         this.setDesiredYaw(this.directionYaw(this.pointerX - centerX, this.pointerY - centerY))
         const lookPitch = clamp((this.pointerY - centerY) / PET_HEIGHT * 0.2, -0.2, 0.2)
@@ -369,6 +446,21 @@ export class WhaleMotionController {
 
   private stepSettling(dt: number): void {
     this.moveTime += dt
+    if (this.settlingToCorner) {
+      const follow = blend(9, dt)
+      this.x += (this.settleTargetX - this.x) * follow
+      this.y += (this.settleTargetY - this.y) * follow
+      this.angleTarget = 0
+      this.desiredPitch *= Math.exp(-7 * dt)
+      if (Math.hypot(this.settleTargetX - this.x, this.settleTargetY - this.y) < 1.2 || this.moveTime > 3) {
+        this.x = this.settleTargetX
+        this.y = this.settleTargetY
+        this.settlingToCorner = false
+        this.mode = 'idle'
+        this.moveTime = 0
+      }
+      return
+    }
     this.x = clamp(this.x + this.vx * dt, MIN_X, this.maxX())
     this.y = clamp(this.y + this.vy * dt, MIN_Y, this.maxY())
     const decay = Math.exp(-10 * dt)

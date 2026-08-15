@@ -16,6 +16,18 @@ DeepSeek Harness 3D 虎鲸桌宠的持久浏览器插件。
 - 拖拽跟随采用无过冲的指数收敛，释放惯性与显示帧率无关。
 - 动画相位逐帧积分，速度变化不会使身体、尾鳍或胸鳍发生相位跳变。
 
+## 交互与持久化
+
+- **点击回顾**——点击桌宠会在气泡里轮播显示：名字/陪伴天数，以及最近的
+  会话事件（完成的回合、goal/plan 里程碑、带工具名和退出码的失败、
+  "等你输入…"）。
+- **右键菜单**——给鲸鲸命名、开关角落吸附、立即回到角落、隐藏。
+  菜单支持键盘操作（Enter/Space），点击外部或 Esc 关闭。
+- **角落吸附**——超过点击阈值的真实拖拽在松手后会滑向最近角落，可在菜单里开关。
+- **`Ctrl`/`Cmd` + `Alt` + `W`**——随时显示/隐藏桌宠，隐藏后快捷键仍有效。
+- **持久化**——名字、位置、隐藏状态和吸附偏好通过 `localStorage` 跨刷新保存
+  （对隐私模式做了防护），回顾气泡还会记录你们已经相伴的天数。
+
 ## 会话联动
 
 插件通过 `ctx.sessions` 观察当前 DSH 会话，并从会话快照以及 `goal`/`plan`
@@ -28,12 +40,13 @@ DeepSeek Harness 3D 虎鲸桌宠的持久浏览器插件。
 | 单轮持续超过 20s | `focused`：轻微下潜/专注姿态 |
 | 工具失败（非零退出码或错误节点） | `error`：汗滴 + 瞪眼，持续 8 秒 |
 | 长任务完成（≥15s）、goal 完成或退出 plan | `celebrating`：沿大椭圆 360° 绕圈，yaw 连续旋转并带近大远小深度，同时每 650ms 冒爱心 |
+| agent 结束回合、等待你回复 | `listening`：安静栖息、看向输入区、头顶漂浮 "？"，点击会回顾"等你输入…" |
 | 睡觉时悬停或拖拽 | 立即醒来并重置空闲计时 |
 | 60s 无活动 | `sleeping`：闭眼、呼吸和游动变慢、显示 z-z-z |
 
 桌宠元素上的调试属性：
 
-- `data-whale-activity` — 当前情绪（`idle`、`thinking`、`working`、`focused`、`celebrating`、`error`、`sleeping`）
+- `data-whale-activity` — 当前情绪（`idle`、`thinking`、`working`、`focused`、`celebrating`、`error`、`sleeping`、`listening`）
 - `data-whale-bridge` — 会话桥接状态（`off`、`waiting`、`bound`）
 
 ## 安装

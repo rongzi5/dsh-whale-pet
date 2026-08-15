@@ -58,6 +58,10 @@ export declare class WhaleMotionController {
     private motionDirectionX;
     private motionDirectionY;
     private motionSpeed;
+    private snapToCorner;
+    private settlingToCorner;
+    private settleTargetX;
+    private settleTargetY;
     private nextLook;
     private lookTime;
     private nextPatrol;
@@ -73,6 +77,19 @@ export declare class WhaleMotionController {
     pointerMove(x: number, y: number): void;
     beginDrag(pointerX: number, pointerY: number): void;
     releaseDrag(): boolean;
+    /** Whether released drags glide to the nearest corner. */
+    setSnapToCorner(enabled: boolean): void;
+    /** Glide to the nearest corner now (context-menu action); no-op while dragging. */
+    snapToCornerNow(): void;
+    /** Restore a persisted position, clamped to the current viewport. */
+    restorePosition(x: number | null, y: number | null): void;
+    /** Current pet top-left position (CSS pixels). */
+    get position(): {
+        x: number;
+        y: number;
+    };
+    private beginCornerSnap;
+    private nearestCorner;
     setHover(hovering: boolean): void;
     /** Update the session-driven mood. */
     setActivity(activity: WhaleActivity): void;

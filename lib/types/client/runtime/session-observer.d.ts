@@ -33,6 +33,9 @@ interface ConversationNodeLike {
     resultView?: {
         exitCode?: number;
     };
+    call?: {
+        name?: string;
+    } | null;
 }
 interface SessionFaceLike extends ObservableLike<ConversationLike> {
     projections?: {
@@ -58,6 +61,7 @@ export declare function deriveWhaleActivity(now: number, state: {
     running: boolean;
     turnStartedAt: number;
     lastActivityAt: number;
+    awaitingInput: boolean;
 }): WhaleActivity;
 export declare class SessionWhaleObserver {
     private readonly ctx;
@@ -81,6 +85,8 @@ export declare class SessionWhaleObserver {
     private lastMood;
     private boundAt;
     private lastNodeCount;
+    private awaitingInput;
+    private lastUserSeq;
     private disposed;
     constructor(ctx: WhaleSessionClientContext, service: WhalePetService);
     /**

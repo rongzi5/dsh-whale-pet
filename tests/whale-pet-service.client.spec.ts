@@ -81,7 +81,7 @@ describe('WhalePetService', () => {
   it('keeps dripping sweat drops through the whole error window', () => {
     vi.useFakeTimers()
     const service = new WhalePetService()
-    service.playErrorReaction(Date.now() + 8_000)
+    service.playErrorReaction(Date.now() + 5_000)
     const sweatCount = (): number =>
       service.getSnapshot().effects.filter(effect => effect.kind === 'sweat').length
 
@@ -91,11 +91,11 @@ describe('WhalePetService', () => {
     expect(sweatCount()).toBe(2)
     vi.advanceTimersByTime(1_400)
     expect(sweatCount()).toBeGreaterThanOrEqual(2)
-    // Still visibly sweating halfway through the window…
-    vi.advanceTimersByTime(4_000)
+    // Still visibly sweating inside the window…
+    vi.advanceTimersByTime(1_500)
     expect(sweatCount()).toBeGreaterThanOrEqual(1)
     // …and everything clears after the window and the last TTL expire.
-    vi.advanceTimersByTime(6_000)
+    vi.advanceTimersByTime(2_500)
     expect(sweatCount()).toBe(0)
 
     service.dispose()

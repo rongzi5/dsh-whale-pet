@@ -81,7 +81,7 @@ describe('WhalePetService', () => {
   it('keeps dripping sweat drops through the whole error window', () => {
     vi.useFakeTimers()
     const service = new WhalePetService()
-    service.playErrorReaction(Date.now() + 5_000)
+    service.playErrorReaction(Date.now() + 3_000)
     const sweatCount = (): number =>
       service.getSnapshot().effects.filter(effect => effect.kind === 'sweat').length
 

@@ -23,6 +23,7 @@ import type { JobRegistry } from '@deepseek-ai/dsh-jobs'
 import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
+import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { createChatProxyHandler, directBackend, resolveChatProxyConfig, type WhaleChatBackend } from './chat-proxy.ts'
 import { LlmBackend } from './llm-backend.ts'
@@ -46,7 +47,7 @@ export interface WhalePetHostConfig {
  * subagent machinery — cordis forbids accessing undeclared services from
  * plugin scope, so a try/catch alone silently degrades to the fallback.
  */
-export const inject = ['webServer', 'llm', 'credentials', 'sessions', 'jobs', 'subagents', 'agents']
+export const inject = ['webServer', 'llm', 'credentials', 'sessions', 'jobs', 'subagents', 'agents', 'settings']
 
 /** Read `ctx.credentials` defensively (declared via inject, still guarded). */
 function safeCredentials(ctx: Context): CredentialProvider | null {
@@ -103,6 +104,14 @@ function safeAgents(ctx: Context): AgentRegistry | null {
 }
 
 /** Read `ctx.workspaceRegistry` defensively. */
+function safeSettings(ctx: Context): SettingsProvider | null {
+  try {
+    return ctx.settings ?? null
+  } catch {
+    return null
+  }
+}
+
 function safeWorkspaces(ctx: Context): WorkspaceRegistry | null {
   try {
     return ctx.workspaceRegistry ?? null
@@ -143,6 +152,7 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
   const subagents = safeSubagents(ctx)
   const agents = safeAgents(ctx)
   const workspaces = safeWorkspaces(ctx)
+  const settings = safeSettings(ctx)
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
@@ -164,7 +174,15 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
     ctx.effect(() => ctx.webServer.register({
       kind: 'exact',
       path: '/api/whale-pet/task',
-      handler: createTaskHandler(subagents, agents, sessions, () => workspaces?.list()[0]?.path),
+      handler: createTaskHandler(subagents, agents, sessions, () => workspaces?.list()[0]?.path, () => {
+        if (settings === null) return undefined
+        try {
+          const value = settings.get(settingsNamespace('agent-presets')) as { default?: unknown } | undefined
+          return typeof value?.default === 'string' ? value.default : undefined
+        } catch {
+          return undefined
+        }
+      }),
     }), 'ui-whale-pet: subagent task')
   }
 

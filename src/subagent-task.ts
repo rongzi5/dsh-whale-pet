@@ -103,6 +103,7 @@ export function createTaskHandler(
   agents: AgentRegistry,
   sessions: SessionStore | null,
   workspaceRoot: () => string | undefined,
+  defaultPreset: () => string | undefined = () => undefined,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
@@ -141,7 +142,8 @@ export function createTaskHandler(
         // No active agent: create a fresh parent identity in the caller's
         // workspace (cwd from the caller session header when known, so the
         // child session lands in the right workspace directory and shows in
-        // the session list).
+        // the session list). The deployment's default agent preset is used so
+        // the child actually has tools and a model.
         const cwd = callerSessionId !== undefined && sessions !== null
           ? (() => {
             try {
@@ -151,11 +153,13 @@ export function createTaskHandler(
             }
           })()
           : undefined
+        const resolvedCwd = cwd ?? workspaceRoot()
+        const preset = defaultPreset()
         const handle = await agents.create({
           sessionId: SessionId(randomUUID()),
           meta: {
-            ...(cwd !== undefined ? { cwd } : {}),
-            ...(cwd === undefined && workspaceRoot() !== undefined ? { cwd: workspaceRoot() } : {}),
+            ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
+            ...(preset !== undefined ? { agentPreset: preset } : {}),
             origin: 'subagent',
             delegationDepth: 1,
           },

@@ -43,4 +43,4 @@ export declare const TASK_MAX_BODY_BYTES: number;
  * workspace and appears in the session list. The provider is whatever
  * subagent backend is registered first (spawn/fork in-process).
  */
-export declare function createTaskHandler(subagents: SubagentRuntime, agents: AgentRegistry, sessions: SessionStore | null, workspaceRoot: () => string | undefined): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+export declare function createTaskHandler(subagents: SubagentRuntime, agents: AgentRegistry, sessions: SessionStore | null, workspaceRoot: () => string | undefined, defaultPreset?: () => string | undefined): (req: IncomingMessage, res: ServerResponse) => Promise<void>;

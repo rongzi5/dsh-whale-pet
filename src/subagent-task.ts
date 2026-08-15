@@ -194,7 +194,7 @@ export function createTaskHandler(
         output = textOf(result.output).slice(0, TASK_OUTPUT_LIMIT)
         const events = run.localAgent?.session.events ?? []
         eventCount = events.length
-        eventTypes = events.map(event => event.type)
+        eventTypes = [...new Set(events.map(event => event.type))]
         const lastEnd = [...events].reverse().find(event => event.type === 'turn/end')
         if (lastEnd !== undefined) {
           turnEndReason = ((lastEnd as { data?: { reason?: unknown } }).data ?? {}).reason

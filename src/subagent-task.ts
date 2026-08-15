@@ -14,8 +14,10 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
+import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Agent, AgentRegistry } from '@deepseek-ai/dsh-agent'
+import type { AgentPresets } from '@deepseek-ai/dsh-agent-presets'
 import { SessionId, type SessionEvent, type SessionStore } from '@deepseek-ai/dsh-session'
 
 /** How long a pet-dispatched task may run before reporting "still running". */
@@ -118,6 +120,7 @@ function finalAssistantText(events: readonly SessionEvent[]): string {
  */
 export function createTaskHandler(
   agents: AgentRegistry,
+  agentPresets: AgentPresets | null,
   sessions: SessionStore | null,
   workspaceRoot: () => string | undefined,
   defaultPreset: () => string | undefined = () => undefined,

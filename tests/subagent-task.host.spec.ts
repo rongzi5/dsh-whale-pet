@@ -59,7 +59,8 @@ function fakeAgents(agent: FakeAgent): AgentRegistry & { createCalls: number } {
 }
 
 async function serve(agents: AgentRegistry, timeoutMs?: number): Promise<{ port: number; close: () => void }> {
-  const server = createServer(createTaskHandler(agents, null, () => '/tmp/workspace', undefined, undefined, timeoutMs))
+  const presets = { mount: async (agentCtx: unknown, id: string): Promise<void> => { presets.mountCalls.push(id) }, mountCalls: [] as string[] }
+  const server = createServer(createTaskHandler(agents, presets as never, null, () => '/tmp/workspace', undefined, undefined, timeoutMs))
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()))
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : 0

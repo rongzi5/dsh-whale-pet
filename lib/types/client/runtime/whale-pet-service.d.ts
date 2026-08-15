@@ -5,7 +5,7 @@
  * other future plugins drive the same service through {@link setActivity},
  * {@link playEffect} and {@link pushRecap}.
  */
-import { type WhaleActivity, type WhaleBridgeState, type WhaleEffectKind, type WhalePetViewSnapshot } from '../activity.ts';
+import { type WhaleActivity, type WhaleBridgeState, type WhaleEffectKind, type WhaleMood, type WhalePetViewSnapshot } from '../activity.ts';
 import { type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts';
 import type { SessionWhaleObserver } from './session-observer.ts';
 import { type StorageLike } from '../persistence.ts';
@@ -25,6 +25,7 @@ export declare class WhalePetService {
     private nextEffectId;
     private nextRecapId;
     private observer;
+    private external;
     private snapshot;
     private disposed;
     constructor(storage?: StorageLike | null);
@@ -60,6 +61,26 @@ export declare class WhalePetService {
     persistPosition(x: number, y: number): void;
     /** Record one session/interaction event for the click recap (dedupes repeats). */
     pushRecap(text: string): void;
+    /**
+     * Show a long-lived speech bubble (chat replies and API output) without
+     * entering the session-event recap history. Truncated to a bubble-safe
+     * length; the bubble auto-clears after `ttlMs`.
+     */
+    showBubble(text: string, ttlMs?: number): void;
+    /**
+     * Override the pet's mood from outside the session observer (e.g. chat
+     * thinking). The observer checks {@link externalMood} every tick and lets it
+     * win until it expires, so session activity cannot stomp an interaction in
+     * flight.
+     */
+    setExternalMood(mood: WhaleMood, until: number): void;
+    /** Drop the external mood override; the observer resumes driving moods. */
+    clearExternalMood(): void;
+    /** The active external mood override, or null. */
+    externalMood(): {
+        mood: WhaleMood;
+        until: number;
+    } | null;
     /** Cycle to the next recap bubble (name/days entry first, then recent events). */
     nextRecap(): void;
     /** Current stable view snapshot for useSyncExternalStore. */

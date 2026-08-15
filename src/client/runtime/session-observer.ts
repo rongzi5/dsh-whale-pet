@@ -424,6 +424,14 @@ export class SessionWhaleObserver {
 
     this.wasRunning = snapshot.running
 
+    // External interactions (e.g. chat thinking) win over every
+    // session-derived state until they expire.
+    const external = this.service.externalMood()
+    if (external !== null && now < external.until) {
+      this.applyActivity({ mood: external.mood, intensity: 1 })
+      return
+    }
+
     // Transient moods win until they expire.
     if (this.transient !== null) {
       if (now < this.transient.until) {

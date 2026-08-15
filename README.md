@@ -21,9 +21,9 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
 - **Click recap** — clicking the pet cycles a speech bubble through the name/days
   entry and recent session events (completed long turns, goal/plan milestones,
   tool failures with tool name and exit code, typing greetings).
-- **Right-click menu** — rename the pet, toggle corner snapping, glide back to a
-  corner, or hide it. The menu is keyboard-accessible (Enter/Space) and closes
-  on outside click or Escape.
+- **Right-click menu** — chat with the pet (LLM, see below), rename the pet,
+  toggle corner snapping, glide back to a corner, or hide it. The menu is
+  keyboard-accessible (Enter/Space) and closes on outside click or Escape.
 - **Corner snapping** — real drags (beyond the click threshold) glide to the
   nearest corner on release; toggle it from the menu.
 - **`Ctrl`/`Cmd` + `Alt` + `W`** — toggle the pet's visibility from anywhere;
@@ -31,6 +31,47 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
 - **Persistence** — the pet's name, position, hidden state and snap preference
   survive reloads through `localStorage` (guarded against private mode), and
   the recap tracks the days you have spent together.
+
+## LLM chat and memory
+
+The right-click **"和鲸鲸聊天…"** entry opens an inline input bubble next to
+the pet (Enter to send, Esc/outside click to close), and the pet replies in
+its speech bubble. The bubble carries a **model selector** and a **reasoning
+effort selector**: the model list comes from the DSH LLM service
+(`GET /api/whale-pet/models`), and models that expose multiple reasoning
+levels (e.g. deepseek-reasoner low/high) show an effort dropdown. Choices
+persist to `localStorage` (`dsh.whale-pet.chat-prefs.v1`) and ride along with
+every request.
+
+Architecture: the browser pet never talks to an upstream LLM directly — the
+host-side entry of this package registers the `/api/whale-pet` prefix on the
+web server, and the client calls the same-origin `POST /api/whale-pet/chat`
+endpoint. The API key stays on the server.
+
+**Backend selection**: when the dsh `ctx.llm` service is available the proxy
+uses it (DSH-configured providers, credentials, retries and reasoning
+efforts); otherwise it falls back to the direct OpenAI-compatible upstream,
+whose key resolves per request:
+
+1. plugin `config.apiKey` (patch entry `config:` field)
+2. env `DSH_WHALE_API_KEY` (fallback `DEEPSEEK_API_KEY`)
+3. the dsh credentials service (`DEEPSEEK_API_KEY`) — the pet works with the
+   same key the agent already uses, zero extra configuration
+
+Other configuration (direct mode only): `DSH_WHALE_API_BASE` (default
+`https://api.deepseek.com`, OpenAI-compatible upstream origin) and
+`DSH_WHALE_API_MODEL` (default `deepseek-chat`).
+
+Memory: the pet keeps long-term facts about you plus a bounded recent
+conversation under the `dsh.whale-pet.memory.v1` localStorage key (same guarded
+storage channel as the rest of the pet state). The system prompt asks the model
+to report memorable facts with a `[记住] <fact>` line; the chat coordinator
+strips those markers before showing the bubble and stores the extracted facts.
+While a request is in flight the pet holds the `thinking` mood (an external
+override the session observer respects) and reacts with an error mood and sweat
+drops if the proxy is unreachable or unconfigured (no key → HTTP 503).
+
+Debug: `GET /api/whale-pet/health` reports `{ ok, configured }`.
 
 ## Session integration
 
@@ -75,53 +116,25 @@ machine running `dsh`.
    `ui-whale-pet` Cordis row to `$DSH_HOME/profiles/web/cordis.patch.yml`.
 
    Use another profile name as the argument to install there.
-3. Restart `dsh web` and hard-refresh the browser.
+3. Configure the chat proxy API key (see [LLM chat and memory](#llm-chat-and-memory))
+   or the pet chat reports an unconfigured error.
+4. Restart `dsh web` and hard-refresh the browser.
 
-### Build from source (development)
+### Build from source (standalone)
 
-The plugin can also be installed from source inside a DeepSeek Harness
-checkout. Use Node.js 22 or newer:
-
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-git clone https://github.com/rongzi5/dsh-whale-pet.git packages/client/ui-whale-pet
-```
-
-Add the workspace package to `packages/bundle/web-app/package.json`:
-
-```json
-"@deepseek-ai/dsh-client-ui-whale-pet": "workspace:^"
-```
-
-Add the formal Cordis row to the browser-plugin block in `packages/bundle/web-app/cordis.patch.yml`:
-
-```yaml
-- id: ui-whale-pet
-  name: '@deepseek-ai/dsh-client-ui-whale-pet'
-```
-
-Add the package source mapping to `compilerOptions.paths` in `tsconfig.base.json`:
-
-```json
-"@deepseek-ai/dsh-client-ui-whale-pet": ["./packages/client/ui-whale-pet/src"]
-```
-
-Add the package project to `references` in `tsconfig.client.json`:
-
-```json
-{ "path": "./packages/client/ui-whale-pet" }
-```
-
-Install, build, and start the Web UI:
+The repository builds standalone (no pnpm workspace, no dsh checkout):
 
 ```sh
-corepack pnpm install
-corepack pnpm run build
-corepack pnpm dsh web
+npm install            # dev toolchain: typescript, esbuild, vitest, three…
+npm run build          # tsc declarations + esbuild host/client bundles → lib/
+npm test               # vitest suite (99 tests)
+node install-profile.mjs web
 ```
 
-Open `http://127.0.0.1:3080` after the process starts. The Host composition is loaded at process startup, so restart `dsh web` after adding or updating this plugin; refreshing the browser alone does not add a new composition row.
+The build is self-contained: host bundles inline everything (only type-only
+imports), so the cordis loader needs no node_modules next to the plugin, and
+the client bundle keeps the DSH `__ModuleLoader__.load` browser format with
+`react`/`react/jsx-runtime` external.
 
 ## Architecture
 
@@ -137,7 +150,13 @@ Open `http://127.0.0.1:3080` after the process starts. The Host composition is l
 - `src/client/whale/materials.ts` — material factories, including the blue/white body-mask shader.
 - `src/client/whale/animation.ts` — frame pose animation (swim, tail, fins, eyes, float, error/sleep reactions).
 - `src/client/whale/scene.ts` — `createWhaleScene` factory composing config, geometry, materials and animation into a `WhaleScene` handle.
-- `src/client/WhalePet.tsx` — thin view consuming the service snapshot through `useSyncExternalStore`; owns the DOM focus listeners for typing detection and the context menu.
+- `src/client/WhalePet.tsx` — thin view consuming the service snapshot through `useSyncExternalStore`; owns the DOM focus listeners for typing detection, the context menu and the chat bubble (model/effort selectors).
+- `src/client/memory.ts` — long-term memory store (facts + recent turns) with the `[记住]` extraction protocol, persisted through the guarded storage channel.
+- `src/client/llm.ts` — browser transport for the same-origin chat proxy (`/api/whale-pet/chat`, `/api/whale-pet/models`), injectable for headless tests.
+- `src/client/runtime/whale-pet-chat.ts` — chat coordinator: thinking override, reply bubble, memory persistence, error reactions, chat preferences.
+- `src/chat-proxy.ts` — pure host-side proxy logic: backend interface, direct upstream forwarding, HTTP handler for `/health`, `/models`, `/chat`.
+- `src/llm-backend.ts` — dsh-llm backend: model catalog with reasoning efforts, streaming completion via `ctx.llm`.
+- `src/index.ts` — host entry: mounts the `/api/whale-pet` prefix on `ctx.webServer`, picks the backend (dsh llm service first, direct upstream fallback).
 
 ## Model source and acknowledgements
 
@@ -147,4 +166,4 @@ This plugin ports and packages the model for the DeepSeek Harness interaction an
 
 ## Lifecycle
 
-The overlay registration, DOM listeners, animation frame, WebGL renderer, geometries, materials, and textures all unwind with the owning Cordis fiber. The package has no Host behavior.
+The overlay registration, DOM listeners, animation frame, WebGL renderer, geometries, materials, and textures all unwind with the owning Cordis fiber. The host chat-proxy route unwinds with its fiber too; the API key never enters the browser.

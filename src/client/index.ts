@@ -5,12 +5,14 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { WhalePet, type WhalePetProps } from './WhalePet.tsx'
 import { SessionWhaleObserver, type WhaleSessionClientContext } from './runtime/session-observer.ts'
 import { WhalePetService } from './runtime/whale-pet-service.ts'
+import { WhalePetChat } from './runtime/whale-pet-chat.ts'
 import { browserStorage } from './persistence.ts'
 
 export { WhaleMotionController, type WhaleMotionFrame } from './motion.ts'
 export { WhalePet, type WhalePetProps } from './WhalePet.tsx'
 export { SessionWhaleObserver, deriveWhaleActivity } from './runtime/session-observer.ts'
 export { WhalePetService } from './runtime/whale-pet-service.ts'
+export { WhalePetChat } from './runtime/whale-pet-chat.ts'
 export { loadWhalePetState, saveWhalePetState, WHALE_PET_DEFAULTS, type WhalePetPersistedState } from './persistence.ts'
 export type { WhaleActivity, WhaleEffect, WhaleEffectKind, WhaleMood, WhaleRecap } from './activity.ts'
 export type { WhaleExternalState, WhaleScene } from './whale/scene.ts'
@@ -21,6 +23,7 @@ export const inject = ['slots', 'sessions']
 /** Mount the runtime service and register one additive shell-overlay entry. */
 export function apply(ctx: ClientContext): void {
   const whalePet = new WhalePetService(browserStorage())
+  const whalePetChat = new WhalePetChat(whalePet, browserStorage())
   const observer = new SessionWhaleObserver(ctx as unknown as WhaleSessionClientContext, whalePet)
   whalePet.bindObserver(observer)
 
@@ -40,7 +43,7 @@ export function apply(ctx: ClientContext): void {
       id: 'whale-pet',
       order: 900,
       label: '3D whale pet',
-      inject: () => ({ whalePet }),
+      inject: () => ({ whalePet, whalePetChat }),
     }, WhalePet as unknown as (props: WhalePetProps) => never))
     observer.start()
     // Headless (node) tests run apply without a window; the shortcut is

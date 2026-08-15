@@ -21,12 +21,44 @@ DeepSeek Harness 3D 虎鲸桌宠的持久浏览器插件。
 - **点击回顾**——点击桌宠会在气泡里轮播显示：名字/陪伴天数，以及最近的
   会话事件（完成的回合、goal/plan 里程碑、带工具名和退出码的失败、
   输入时的问候）。
-- **右键菜单**——给鲸鲸命名、开关角落吸附、立即回到角落、隐藏。
+- **右键菜单**——和鲸鲸聊天（LLM，见下文）、给鲸鲸命名、开关角落吸附、立即回到角落、隐藏。
   菜单支持键盘操作（Enter/Space），点击外部或 Esc 关闭。
 - **角落吸附**——超过点击阈值的真实拖拽在松手后会滑向最近角落，可在菜单里开关。
 - **`Ctrl`/`Cmd` + `Alt` + `W`**——随时显示/隐藏桌宠，隐藏后快捷键仍有效。
 - **持久化**——名字、位置、隐藏状态和吸附偏好通过 `localStorage` 跨刷新保存
   （对隐私模式做了防护），回顾气泡还会记录你们已经相伴的天数。
+
+## LLM 聊天与记忆
+
+右键菜单的 **「和鲸鲸聊天…」** 会在桌宠旁弹出内联输入气泡（回车发送，Esc/点外部
+关闭），鲸鲸在气泡里回复。气泡上方有**模型选择器**和**思考强度选择器**：
+模型列表来自 DSH 的 LLM 服务（`GET /api/whale-pet/models`），选中的模型若支持
+多档推理（如 deepseek-reasoner 的低/高），会显示思考强度下拉；选择会持久化到
+`localStorage`（`dsh.whale-pet.chat-prefs.v1`），每次聊天自动带上。
+
+架构：浏览器端的鲸鲸不直接请求上游 LLM——本包的 host 侧入口在 web server 上注册
+`/api/whale-pet` 前缀，客户端只调用同源的 `POST /api/whale-pet/chat`，API Key 始终
+留在服务端。
+
+**后端自动选择**：当 DSH 的 `ctx.llm` 服务可用时，代理直接走它（复用 DSH 已配置的
+provider、凭证、重试与推理档位）；否则回退到直连上游（OpenAI 兼容端点），此时
+Key 按顺序解析：
+
+1. 插件 `config.apiKey`（patch 条目 `config:` 字段）
+2. 环境变量 `DSH_WHALE_API_KEY`（回退 `DEEPSEEK_API_KEY`）
+3. dsh 的 credentials 服务（`DEEPSEEK_API_KEY`）——与 agent 共用同一把 Key，
+   零额外配置即可用
+
+其他配置（仅直连模式生效）：`DSH_WHALE_API_BASE`（默认 `https://api.deepseek.com`，
+OpenAI 兼容上游地址）与 `DSH_WHALE_API_MODEL`（默认 `deepseek-chat`）。
+
+记忆：鲸鲸在 `dsh.whale-pet.memory.v1` 这个 localStorage 键下保存关于你的长期事实和
+有界近期对话（与桌宠其他状态同一套带防护的存储通道）。系统提示要求模型用
+`[记住] 事实` 行回报值得记住的内容；协调器展示气泡前会剥掉这些标记并把事实写入记忆。
+请求在途时鲸鲸保持 `thinking` 情绪（外部覆盖，会话观察器会尊重它）；代理不可达或未
+配置（无 Key → HTTP 503）时表现为 error 情绪 + 冒汗。
+
+调试：`GET /api/whale-pet/health` 返回 `{ ok, configured }`。
 
 ## 会话联动
 
@@ -67,52 +99,23 @@ DeepSeek Harness 3D 虎鲸桌宠的持久浏览器插件。
    `ui-whale-pet` Cordis 条目追加到 `$DSH_HOME/profiles/web/cordis.patch.yml`。
 
    如需安装到其他 profile，把 `web` 换成对应名称即可。
-3. 重启 `dsh web`，并强制刷新浏览器。
+3. 配置聊天代理的 API Key（见「LLM 聊天与记忆」），否则聊天会提示未配置。
+4. 重启 `dsh web`，并强制刷新浏览器。
 
-### 从源码构建（开发）
+### 从源码构建（独立仓库）
 
-也可以把插件放进 DeepSeek Harness 源码 checkout 中安装。需要 Node.js 22 或更高版本：
-
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-git clone https://github.com/rongzi5/dsh-whale-pet.git packages/client/ui-whale-pet
-```
-
-在 `packages/bundle/web-app/package.json` 中加入 workspace 依赖：
-
-```json
-"@deepseek-ai/dsh-client-ui-whale-pet": "workspace:^"
-```
-
-在 `packages/bundle/web-app/cordis.patch.yml` 的浏览器插件区域加入正式 Cordis 条目：
-
-```yaml
-- id: ui-whale-pet
-  name: '@deepseek-ai/dsh-client-ui-whale-pet'
-```
-
-在 `tsconfig.base.json` 的 `compilerOptions.paths` 中加入源码映射：
-
-```json
-"@deepseek-ai/dsh-client-ui-whale-pet": ["./packages/client/ui-whale-pet/src"]
-```
-
-在 `tsconfig.client.json` 的 `references` 中加入项目引用：
-
-```json
-{ "path": "./packages/client/ui-whale-pet" }
-```
-
-安装依赖、构建并启动 Web UI：
+本仓库可独立构建（不需要 pnpm workspace 或 dsh checkout）：
 
 ```sh
-corepack pnpm install
-corepack pnpm run build
-corepack pnpm dsh web
+npm install            # 开发工具链：typescript、esbuild、vitest、three 等
+npm run build          # tsc 声明 + esbuild host/client 产物 → lib/
+npm test               # vitest 套件（99 个用例）
+node install-profile.mjs web
 ```
 
-进程启动后打开 `http://127.0.0.1:3080`。Host composition 只在进程启动时加载，因此新增或更新本插件后需要重启 `dsh web`；仅刷新浏览器不会加入新的 composition 条目。
+构建是自包含的：host 产物内联一切（只保留 type-only import），cordis loader 无需在插件
+旁安装 node_modules；client 产物保持 DSH 的 `__ModuleLoader__.load` 浏览器格式，
+仅 external `react`/`react/jsx-runtime`。
 
 ## 架构
 
@@ -128,7 +131,13 @@ corepack pnpm dsh web
 - `src/client/whale/materials.ts` — 材质工厂，包括蓝白身体遮罩 shader。
 - `src/client/whale/animation.ts` — 逐帧姿态动画（游动、尾鳍、胸鳍、眼睛、漂浮、错误/睡眠反应）。
 - `src/client/whale/scene.ts` — `createWhaleScene` 工厂，组合 config、geometry、materials 和 animation 为 `WhaleScene` 句柄。
-- `src/client/WhalePet.tsx` — 通过 `useSyncExternalStore` 消费服务快照的薄视图；持有输入检测的 DOM 焦点监听和右键菜单。
+- `src/client/WhalePet.tsx` — 通过 `useSyncExternalStore` 消费服务快照的薄视图；持有输入检测的 DOM 焦点监听、右键菜单和聊天气泡（模型/思考强度选择器）。
+- `src/client/memory.ts` — 长期记忆库（事实 + 近期对话），带 `[记住]` 提取协议，经带防护的存储通道持久化。
+- `src/client/llm.ts` — 同源聊天代理（`/api/whale-pet/chat`、`/api/whale-pet/models`）的浏览器传输层，可注入以便无头测试。
+- `src/client/runtime/whale-pet-chat.ts` — 聊天协调器：思考覆盖、回复气泡、记忆持久化、错误反应、聊天偏好。
+- `src/chat-proxy.ts` — 纯 host 代理逻辑：后端接口、直连上游转发、`/health`/`/models`/`/chat` HTTP handler。
+- `src/llm-backend.ts` — dsh-llm 后端：带思考档位的模型目录、经 `ctx.llm` 的流式补全。
+- `src/index.ts` — host 入口：在 `ctx.webServer` 上挂载 `/api/whale-pet` 前缀路由，选择后端（优先 dsh llm 服务，回退直连上游）。
 
 ## 模型来源与致谢
 
@@ -138,4 +147,4 @@ corepack pnpm dsh web
 
 ## 生命周期
 
-悬浮条目、DOM 监听器、动画帧、WebGL 渲染器、几何体、材质和纹理都随所属 Cordis Fiber 一同释放。本包不提供 Host 侧行为。
+悬浮条目、DOM 监听器、动画帧、WebGL 渲染器、几何体、材质和纹理都随所属 Cordis Fiber 一同释放。host 侧聊天代理路由也随其 Fiber 释放；API Key 始终不进入浏览器。

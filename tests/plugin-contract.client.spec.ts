@@ -60,7 +60,35 @@ describe('ui-whale-pet plugin contract', () => {
     disposeEffect?.()
   })
 
-  it('has no host-side behavior', () => {
-    expect(() => { nodeApply() }).not.toThrow()
+  it('registers the chat proxy route with the web server', () => {
+    const routes: unknown[] = []
+    let effectDispose: (() => void) | null = null
+    const ctx = {
+      effect(callback: () => void | (() => void)): () => void {
+        const dispose = callback()
+        effectDispose = () => {
+          if (typeof dispose === 'function') dispose()
+        }
+        return () => {
+          effectDispose?.()
+        }
+      },
+      webServer: {
+        register(route: unknown): () => void {
+          routes.push(route)
+          return () => {
+            routes.splice(routes.indexOf(route), 1)
+          }
+        },
+      },
+    }
+
+    nodeApply(ctx as never)
+
+    expect(routes).toHaveLength(1)
+    expect(routes[0]).toMatchObject({ kind: 'prefix', path: '/api/whale-pet' })
+
+    effectDispose?.()
+    expect(routes).toHaveLength(0)
   })
 })

@@ -388,4 +388,32 @@ describe('SessionWhaleObserver', () => {
     observer.dispose()
     service.dispose()
   })
+
+  it('lets an external mood override win over session-derived states', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+
+    // Active session would normally derive working.
+    conversation.set({
+      running: true,
+      partial: { blocks: [1] },
+      runningCalls: [{ name: 'bash' }],
+      nodes: [],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('working')
+
+    // Chat thinking takes over and survives observer ticks.
+    service.setExternalMood('thinking', Date.now() + 10_000)
+    vi.advanceTimersByTime(1_000)
+    expect(service.getSnapshot().activity.mood).toBe('thinking')
+
+    // After the override expires the observer resumes driving the mood.
+    vi.advanceTimersByTime(10_000)
+    expect(service.getSnapshot().activity.mood).toBe('working')
+
+    observer.dispose()
+    service.dispose()
+  })
 })

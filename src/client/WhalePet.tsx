@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from 'react'
 import type { WhaleEffect } from './activity.ts'
 import { WhalePetService } from './runtime/whale-pet-service.ts'
+import type { WhalePetChat } from './runtime/whale-pet-chat.ts'
+import type { WhaleChatOptions, WhaleModelCatalog } from './llm.ts'
 import styles from './WhalePet.module.css'
 
 export interface WhalePetProps {
   whalePet: WhalePetService
+  /** Optional LLM chat coordinator; adds the "和鲸鲸聊天" menu entry. */
+  whalePetChat?: WhalePetChat
 }
 
 interface WhaleMenuState {
   x: number
   y: number
 }
+
+/** The chat input bubble position (fixed, follows where the menu opened). */
+type ChatBoxState = WhaleMenuState
 
 const MENU_WIDTH = 156
 const MENU_HEIGHT = 176
@@ -27,14 +34,21 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
 }
 
 /** The frame-wide interactive whale pet surface (view only). */
-export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
+export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.ReactElement {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const petRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const shadowRef = useRef<HTMLSpanElement | null>(null)
+  const chatBoxRef = useRef<HTMLDivElement | null>(null)
   const lastContextMenuAt = useRef(0)
   const [error, setError] = useState('')
   const [menu, setMenu] = useState<WhaleMenuState | null>(null)
+  const [chatBox, setChatBox] = useState<ChatBoxState | null>(null)
+  const [chatText, setChatText] = useState('')
+  const [catalog, setCatalog] = useState<WhaleModelCatalog | null>(null)
+  const [catalogError, setCatalogError] = useState('')
+  const [modelKey, setModelKey] = useState('')
+  const [effort, setEffort] = useState('')
 
   const snapshot = useSyncExternalStore(
     onChange => whalePet.subscribe(onChange),
@@ -78,6 +92,73 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
       window.removeEventListener('blur', close)
     }
   }, [menu])
+
+  // The chat bubble closes on outside presses or Escape.
+  //
+  // Listens to `mousedown` instead of `click` on purpose: the menu item that
+  // opens the bubble dispatches a click, and React may flush the bubble into
+  // the DOM before that same click finishes bubbling to document (React 18
+  // flushes discrete events synchronously in real browsers). A click-based
+  // closer would then treat the menu-item click as an outside click and close
+  // the bubble the instant it opens.
+  useEffect(() => {
+    if (chatBox === null) return
+    const close = (event: MouseEvent): void => {
+      const target = event.target
+      if (target instanceof Node && chatBoxRef.current !== null && chatBoxRef.current.contains(target)) return
+      setChatBox(null)
+    }
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape') setChatBox(null)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [chatBox])
+
+  // Load the model catalog (and the persisted selection) when the bubble opens.
+  useEffect(() => {
+    if (chatBox === null || whalePetChat === undefined) return
+    let cancelled = false
+    const prefs = whalePetChat.getPreferences()
+    if (prefs !== null) {
+      setModelKey(`${prefs.provider}::${prefs.model}`)
+      if (prefs.effort !== undefined) setEffort(prefs.effort)
+    }
+    whalePetChat.listModels()
+      .then(next => {
+        if (cancelled) return
+        setCatalog(next)
+        setModelKey(current => {
+          if (current !== '') {
+            const stillThere = next.providers.some(provider => provider.models.some(model => `${provider.id}::${model.id}` === current))
+            if (stillThere) return current
+          }
+          return `${next.default.provider}::${next.default.model}`
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogError('模型列表加载失败')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [chatBox, whalePetChat])
+
+  // Keep the effort selection valid for the currently chosen model.
+  useEffect(() => {
+    if (catalog === null || modelKey === '') return
+    const [provider, model] = modelKey.split('::')
+    const entry = catalog.providers.find(candidate => candidate.id === provider)?.models.find(candidate => candidate.id === model)
+    if (entry === undefined || entry.efforts.length === 0) {
+      setEffort('')
+      return
+    }
+    setEffort(current => (current !== '' && entry.efforts.some(candidate => candidate.id === current) ? current : entry.defaultEffort ?? ''))
+  }, [catalog, modelKey])
 
   // The pet listens (floating "？") only while the user is composing a reply
   // in the chat input; a short grace period avoids flicker when focus moves
@@ -157,6 +238,29 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
   const rename = (): void => {
     const next = window.prompt('给鲸鲸起个新名字：', snapshot.name)
     if (next !== null) whalePet.setName(next)
+  }
+
+  const chat = (): void => {
+    if (whalePetChat === undefined || menu === null) return
+    setChatBox({ x: menu.x, y: menu.y })
+    setChatText('')
+    setCatalogError('')
+  }
+
+  const sendChat = (): void => {
+    const text = chatText.trim()
+    if (text === '' || whalePetChat === undefined) return
+    const [provider, model] = modelKey.split('::')
+    const options: WhaleChatOptions = {}
+    if (provider !== undefined && provider !== '' && model !== undefined && model !== '') {
+      options.provider = provider
+      options.model = model
+      if (effort !== '') options.effort = effort
+      whalePetChat.setPreferences({ provider, model, ...(effort !== '' ? { effort } : {}) })
+    }
+    setChatText('')
+    setChatBox(null)
+    void whalePetChat.ask(text, options)
   }
 
   const keyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
@@ -239,6 +343,15 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
       </div>
       {menu !== null ? (
         <div className={styles.menu} style={{ left: menu.x, top: menu.y }} role="menu" aria-label="鲸鲸菜单">
+          {whalePetChat !== undefined ? (
+            <button
+              type="button"
+              className={styles.menuItem}
+              onClick={() => { setMenu(null); chat() }}
+            >
+              和鲸鲸聊天…
+            </button>
+          ) : null}
           <button type="button" className={styles.menuItem} onClick={() => { setMenu(null); rename() }}>命名…</button>
           <button
             type="button"
@@ -249,6 +362,78 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
           </button>
           <button type="button" className={styles.menuItem} onClick={() => { setMenu(null); whalePet.snapToCornerNow() }}>回到角落</button>
           <button type="button" className={styles.menuItem} onClick={() => { setMenu(null); whalePet.setHidden(true) }}>隐藏（Ctrl+Alt+W 恢复）</button>
+        </div>
+      ) : null}
+      {chatBox !== null ? (
+        <div
+          ref={chatBoxRef}
+          className={styles.chatBox}
+          style={{ left: chatBox.x, top: chatBox.y }}
+          role="dialog"
+          aria-label="和鲸鲸聊天"
+          data-whale-chat="open"
+        >
+          <div className={styles.chatRow}>
+            <select
+              className={styles.chatSelect}
+              value={modelKey}
+              aria-label="选择模型"
+              disabled={catalog === null && catalogError === ''}
+              onChange={event => setModelKey(event.target.value)}
+            >
+              {catalog === null ? (
+                <option value="">{catalogError === '' ? '加载模型…' : '模型不可用'}</option>
+              ) : (
+                catalog.providers.flatMap(provider =>
+                  provider.models.map(model => (
+                    <option key={`${provider.id}::${model.id}`} value={`${provider.id}::${model.id}`}>
+                      {provider.name} · {model.name}
+                    </option>
+                  )),
+                )
+              )}
+            </select>
+            {(() => {
+              const [provider, model] = modelKey.split('::')
+              const entry = catalog?.providers.find(candidate => candidate.id === provider)?.models.find(candidate => candidate.id === model)
+              if (entry === undefined || entry.efforts.length === 0) return null
+              return (
+                <select
+                  className={styles.chatSelect}
+                  value={effort}
+                  aria-label="思考强度"
+                  onChange={event => setEffort(event.target.value)}
+                >
+                  <option value="">默认</option>
+                  {entry.efforts.map(candidate => (
+                    <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+                  ))}
+                </select>
+              )
+            })()}
+          </div>
+          <div className={styles.chatRow}>
+            <input
+              className={styles.chatInput}
+              value={chatText}
+              autoFocus
+              maxLength={200}
+              placeholder="对鲸鲸说…"
+              onChange={event => setChatText(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') sendChat()
+                if (event.key === 'Escape') setChatBox(null)
+              }}
+            />
+            <button
+              type="button"
+              className={styles.chatSend}
+              disabled={chatText.trim() === ''}
+              onClick={sendChat}
+            >
+              发送
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

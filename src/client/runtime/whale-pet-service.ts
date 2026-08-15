@@ -6,7 +6,7 @@
  * {@link playEffect} and {@link pushRecap}.
  */
 
-import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleBridgeState, type WhaleEffect, type WhaleEffectKind, type WhalePetViewSnapshot, type WhaleRecap } from '../activity.ts'
+import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleBridgeState, type WhaleEffect, type WhaleEffectKind, type WhaleMood, type WhalePetViewSnapshot, type WhaleRecap } from '../activity.ts'
 import { WhalePetController, type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts'
 import type { SessionWhaleObserver } from './session-observer.ts'
 import { daysSince, loadWhalePetState, saveWhalePetState, type StorageLike, type WhalePetPersistedState } from '../persistence.ts'
@@ -43,6 +43,7 @@ export class WhalePetService {
   private nextEffectId = 1
   private nextRecapId = 1
   private observer: SessionWhaleObserver | null = null
+  private external: { mood: WhaleMood; until: number } | null = null
   private snapshot!: WhalePetViewSnapshot
   private disposed = false
 
@@ -173,6 +174,45 @@ export class WhalePetService {
     this.nextRecapId += 1
   }
 
+  /**
+   * Show a long-lived speech bubble (chat replies and API output) without
+   * entering the session-event recap history. Truncated to a bubble-safe
+   * length; the bubble auto-clears after `ttlMs`.
+   */
+  public showBubble(text: string, ttlMs = RECAP_TTL_MS): void {
+    if (this.disposed || text === '') return
+    this.recapCurrent = { id: this.nextRecapId, text: text.slice(0, 220) }
+    this.nextRecapId += 1
+    this.publish()
+    this.scheduleRecapClear(ttlMs)
+  }
+
+  /**
+   * Override the pet's mood from outside the session observer (e.g. chat
+   * thinking). The observer checks {@link externalMood} every tick and lets it
+   * win until it expires, so session activity cannot stomp an interaction in
+   * flight.
+   */
+  public setExternalMood(mood: WhaleMood, until: number): void {
+    if (this.disposed) return
+    this.external = { mood, until }
+    this.activity = { mood, intensity: 1 }
+    this.controller.setActivity(this.activity)
+    this.publish()
+  }
+
+  /** Drop the external mood override; the observer resumes driving moods. */
+  public clearExternalMood(): void {
+    if (this.external === null) return
+    this.external = null
+    this.publish()
+  }
+
+  /** The active external mood override, or null. */
+  public externalMood(): { mood: WhaleMood; until: number } | null {
+    return this.external
+  }
+
   /** Cycle to the next recap bubble (name/days entry first, then recent events). */
   public nextRecap(): void {
     if (this.disposed) return
@@ -280,14 +320,14 @@ export class WhalePetService {
     this.timers.add(timer)
   }
 
-  private scheduleRecapClear(): void {
+  private scheduleRecapClear(ttlMs = RECAP_TTL_MS): void {
     if (this.recapTimer !== null) clearTimeout(this.recapTimer)
     this.recapTimer = setTimeout(() => {
       this.recapTimer = null
       if (this.disposed) return
       this.recapCurrent = null
       this.publish()
-    }, RECAP_TTL_MS)
+    }, ttlMs)
   }
 
   private nameRecap(): WhaleRecap {
@@ -312,6 +352,7 @@ export class WhalePetService {
     this.activity = IDLE_ACTIVITY
     this.bridge = 'off'
     this.recapCurrent = null
+    this.external = null
     this.observer = null
     this.snapshot = this.buildSnapshot()
   }

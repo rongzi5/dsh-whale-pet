@@ -1,0 +1,205 @@
+import { describe, expect, it, vi } from 'vitest'
+import { WhalePetService } from '../src/client/runtime/whale-pet-service.ts'
+import { WhalePetChat, CHAT_FAILURE_BUBBLE, loadChatPreferences, saveChatPreferences } from '../src/client/runtime/whale-pet-chat.ts'
+import { loadWhaleMemory } from '../src/client/memory.ts'
+import type { StorageLike } from '../src/client/persistence.ts'
+import type { WhaleChatMessage, WhaleChatTransport, WhaleModelCatalog } from '../src/client/llm.ts'
+
+class FakeStorage implements StorageLike {
+  private readonly map = new Map<string, string>()
+  public getItem(key: string): string | null {
+    return this.map.get(key) ?? null
+  }
+  public setItem(key: string, value: string): void {
+    this.map.set(key, value)
+  }
+}
+
+const FAKE_CATALOG: WhaleModelCatalog = {
+  providers: [
+    {
+      id: 'deepseek-official',
+      name: 'DeepSeek 官方',
+      models: [
+        { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', efforts: [] },
+        {
+          id: 'deepseek-reasoner',
+          name: 'DeepSeek Reasoner',
+          efforts: [
+            { id: 'low', name: '低' },
+            { id: 'high', name: '高' },
+          ],
+          defaultEffort: 'low',
+        },
+      ],
+    },
+  ],
+  default: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+}
+
+function fakeTransport(reply: string | ((messages: readonly WhaleChatMessage[]) => string), fail = false): WhaleChatTransport & { calls: number; lastOptions?: unknown } {
+  const calls = { count: 0, lastOptions: undefined as unknown }
+  return {
+    calls: 0,
+    lastOptions: undefined,
+    async postChat(messages, options): Promise<string> {
+      calls.count += 1
+      this.calls = calls.count
+      this.lastOptions = options
+      if (fail) throw new Error('upstream down')
+      return typeof reply === 'function' ? reply(messages) : reply
+    },
+    async listModels(): Promise<WhaleModelCatalog> {
+      return FAKE_CATALOG
+    },
+  }
+}
+
+describe('WhalePetChat', () => {
+  it('shows the reply bubble, persists memory facts and turns', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const transport = fakeTransport('你好呀！\n[记住] 用户喜欢蓝色')
+    const chat = new WhalePetChat(service, storage, transport)
+
+    await chat.ask('我喜欢蓝色')
+
+    // The reply bubble shows the marker-free text.
+    expect(service.getSnapshot().recap?.text).toBe('你好呀！')
+    // The memory stores the extracted fact plus both turns.
+    const memory = loadWhaleMemory(storage)
+    expect(memory.facts).toEqual(['用户喜欢蓝色'])
+    expect(memory.turns).toEqual([
+      { role: 'user', text: '我喜欢蓝色' },
+      { role: 'assistant', text: '你好呀！' },
+    ])
+    expect(chat.isBusy).toBe(false)
+    service.dispose()
+  })
+
+  it('holds the thinking mood while the request is in flight', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    let release: (() => void) | undefined
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const transport: WhaleChatTransport = {
+      async postChat(): Promise<string> {
+        await gate
+        return '好了'
+      },
+    }
+    const chat = new WhalePetChat(service, storage, transport)
+
+    const pending = chat.ask('在吗')
+    expect(service.getSnapshot().activity.mood).toBe('thinking')
+    expect(service.externalMood()).not.toBeNull()
+    release?.()
+    await pending
+    expect(service.externalMood()).toBeNull()
+    service.dispose()
+  })
+
+  it('reacts with an error bubble and sweat on upstream failure', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const chat = new WhalePetChat(service, storage, fakeTransport('', true))
+
+    await chat.ask('在吗')
+    expect(service.getSnapshot().recap?.text).toBe(CHAT_FAILURE_BUBBLE)
+    expect(service.getSnapshot().activity.mood).toBe('error')
+    expect(loadWhaleMemory(storage).turns).toHaveLength(0)
+    service.dispose()
+  })
+
+  it('guards re-entry with a nudge bubble while a request is in flight', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    let release: (() => void) | undefined
+    const gate = new Promise<void>(resolve => { release = resolve })
+    let calls = 0
+    const transport: WhaleChatTransport = {
+      async postChat(): Promise<string> {
+        calls += 1
+        await gate
+        return '第一句'
+      },
+      async listModels(): Promise<WhaleModelCatalog> {
+        return FAKE_CATALOG
+      },
+    }
+    const chat = new WhalePetChat(service, storage, transport)
+
+    const first = chat.ask('第一句')
+    const second = chat.ask('第二句')
+    expect(calls).toBe(1)
+    expect(service.getSnapshot().recap?.text).toBe('等我先把这句说完～')
+    release?.()
+    await Promise.all([first, second])
+    expect(calls).toBe(1)
+    service.dispose()
+  })
+
+  it('ignores blank input', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const transport = fakeTransport('x')
+    const chat = new WhalePetChat(service, storage, transport)
+    await chat.ask('')
+    expect(transport.calls).toBe(0)
+    service.dispose()
+  })
+
+  it('passes model/effort options through to the transport', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const transport = fakeTransport('收到')
+    const chat = new WhalePetChat(service, storage, transport)
+
+    await chat.ask('在吗', { provider: 'deepseek-official', model: 'deepseek-reasoner', effort: 'high' })
+    expect(transport.lastOptions).toEqual({ provider: 'deepseek-official', model: 'deepseek-reasoner', effort: 'high' })
+    service.dispose()
+  })
+
+  it('round-trips chat preferences through storage', () => {
+    const storage = new FakeStorage()
+    expect(loadChatPreferences(storage)).toBeNull()
+
+    saveChatPreferences(storage, { provider: 'p', model: 'm', effort: 'high' })
+    expect(loadChatPreferences(storage)).toEqual({ provider: 'p', model: 'm', effort: 'high' })
+
+    saveChatPreferences(storage, { provider: 'p2', model: 'm2' })
+    expect(loadChatPreferences(storage)).toEqual({ provider: 'p2', model: 'm2' })
+
+    storage.setItem('dsh.whale-pet.chat-prefs.v1', '{broken')
+    expect(loadChatPreferences(storage)).toBeNull()
+  })
+})
+
+describe('WhalePetService external mood', () => {
+  it('expires the override and publishes snapshot changes', () => {
+    const service = new WhalePetService(new FakeStorage())
+    const listener = vi.fn()
+    service.subscribe(listener)
+
+    service.setExternalMood('thinking', Date.now() + 10_000)
+    expect(service.getSnapshot().activity.mood).toBe('thinking')
+    expect(service.externalMood()).toMatchObject({ mood: 'thinking' })
+    expect(listener).toHaveBeenCalled()
+
+    service.clearExternalMood()
+    expect(service.externalMood()).toBeNull()
+    service.dispose()
+  })
+
+  it('showBubble renders long chat text without touching recap history', () => {
+    const service = new WhalePetService(new FakeStorage())
+    service.pushRecap('历史事件')
+    service.showBubble('这是一条很长的回复'.repeat(40), 1_000)
+    expect(service.getSnapshot().recap?.text.length).toBeLessThanOrEqual(220)
+
+    // The click recap cycle still only sees session events + the name entry.
+    service.nextRecap()
+    expect(service.getSnapshot().recap?.text).toBe('历史事件')
+    service.dispose()
+  })
+})

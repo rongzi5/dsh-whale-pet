@@ -11,9 +11,10 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { randomUUID } from 'node:crypto'
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId, type SessionStore } from '@deepseek-ai/dsh-session'
 
 /** How long a pet-dispatched task may run before reporting "still running". */
 export const TASK_TIMEOUT_MS = 60_000
@@ -90,13 +91,17 @@ async function readJsonBody(
 /**
  * Build the `POST /api/whale-pet/task` handler.
  *
- * Parent agent: the current initiator when one is active; otherwise a fresh
- * agent is created for the workspace as the parent identity. The provider is
- * whatever subagent backend is registered first (spawn/fork in-process).
+ * Parent agent: the current initiator when one is active (so the child hangs
+ * under the live conversation and shows in the subagent view); otherwise a
+ * fresh parent agent is created with the cwd of the caller's session (taken
+ * from the session header), so the child session lands in the user's
+ * workspace and appears in the session list. The provider is whatever
+ * subagent backend is registered first (spawn/fork in-process).
  */
 export function createTaskHandler(
   subagents: SubagentRuntime,
   agents: AgentRegistry,
+  sessions: SessionStore | null,
   workspaceRoot: () => string | undefined,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res): Promise<void> => {
@@ -111,16 +116,17 @@ export function createTaskHandler(
     }
     const body = await readJsonBody(req)
     if (body === null || typeof body !== 'object') {
-      sendJson(res, 400, { error: 'request body must be JSON: { prompt: string }' })
+      sendJson(res, 400, { error: 'request body must be JSON: { prompt: string, session?: string }' })
       return
     }
-    const record = body as { prompt?: unknown; label?: unknown }
+    const record = body as { prompt?: unknown; label?: unknown; session?: unknown }
     const prompt = typeof record.prompt === 'string' ? record.prompt.trim() : ''
     if (prompt === '') {
       sendJson(res, 400, { error: 'missing prompt' })
       return
     }
     const label = typeof record.label === 'string' && record.label !== '' ? record.label.slice(0, 40) : '鲸鲸的任务'
+    const callerSessionId = typeof record.session === 'string' && record.session !== '' ? record.session : undefined
     const providers = subagents.list()
     const provider = providers[0]
     if (provider === undefined) {
@@ -132,11 +138,24 @@ export function createTaskHandler(
     let parentHandle: { dispose(): Promise<void> } | null = null
     try {
       if (parent === undefined) {
-        // No active agent: create a fresh parent identity in the workspace.
+        // No active agent: create a fresh parent identity in the caller's
+        // workspace (cwd from the caller session header when known, so the
+        // child session lands in the right workspace directory and shows in
+        // the session list).
+        const cwd = callerSessionId !== undefined && sessions !== null
+          ? (() => {
+            try {
+              return sessions.get(SessionId(callerSessionId))?.header.cwd
+            } catch {
+              return undefined
+            }
+          })()
+          : undefined
         const handle = await agents.create({
-          sessionId: SessionId(`whale-task-${Date.now().toString(36)}`),
+          sessionId: SessionId(randomUUID()),
           meta: {
-            cwd: workspaceRoot(),
+            ...(cwd !== undefined ? { cwd } : {}),
+            ...(cwd === undefined && workspaceRoot() !== undefined ? { cwd: workspaceRoot() } : {}),
             origin: 'subagent',
             delegationDepth: 1,
           },

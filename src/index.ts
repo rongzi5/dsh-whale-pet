@@ -164,7 +164,7 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
     ctx.effect(() => ctx.webServer.register({
       kind: 'exact',
       path: '/api/whale-pet/task',
-      handler: createTaskHandler(subagents, agents, () => workspaces?.list()[0]?.path),
+      handler: createTaskHandler(subagents, agents, sessions, () => workspaces?.list()[0]?.path),
     }), 'ui-whale-pet: subagent task')
   }
 

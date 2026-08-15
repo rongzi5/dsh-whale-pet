@@ -12,6 +12,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent';
 import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent';
+import { type SessionStore } from '@deepseek-ai/dsh-session';
 /** How long a pet-dispatched task may run before reporting "still running". */
 export declare const TASK_TIMEOUT_MS = 60000;
 /** Final-output text cap returned to the pet bubble. */
@@ -35,8 +36,11 @@ export declare const TASK_MAX_BODY_BYTES: number;
 /**
  * Build the `POST /api/whale-pet/task` handler.
  *
- * Parent agent: the current initiator when one is active; otherwise a fresh
- * agent is created for the workspace as the parent identity. The provider is
- * whatever subagent backend is registered first (spawn/fork in-process).
+ * Parent agent: the current initiator when one is active (so the child hangs
+ * under the live conversation and shows in the subagent view); otherwise a
+ * fresh parent agent is created with the cwd of the caller's session (taken
+ * from the session header), so the child session lands in the user's
+ * workspace and appears in the session list. The provider is whatever
+ * subagent backend is registered first (spawn/fork in-process).
  */
-export declare function createTaskHandler(subagents: SubagentRuntime, agents: AgentRegistry, workspaceRoot: () => string | undefined): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+export declare function createTaskHandler(subagents: SubagentRuntime, agents: AgentRegistry, sessions: SessionStore | null, workspaceRoot: () => string | undefined): (req: IncomingMessage, res: ServerResponse) => Promise<void>;

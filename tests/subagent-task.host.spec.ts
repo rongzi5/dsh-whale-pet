@@ -53,7 +53,7 @@ function fakeSubagents(resultText: string, fail = false): SubagentRuntime & { ca
 }
 
 async function serve(subagents: SubagentRuntime, agents: AgentRegistry): Promise<{ port: number; close: () => void }> {
-  const server = createServer(createTaskHandler(subagents, agents, () => '/tmp/workspace'))
+  const server = createServer(createTaskHandler(subagents, agents, null, () => '/tmp/workspace'))
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()))
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : 0

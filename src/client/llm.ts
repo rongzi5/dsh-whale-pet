@@ -61,9 +61,10 @@ export interface WhaleChatTransport {
   getProgress?(sessionId: string): Promise<WhaleSessionProgress>
   /**
    * Optional subagent task dispatch: spawn a real child conversation in the
-   * workspace and wait for its final output.
+   * workspace and wait for its final output. `sessionId` anchors the child
+   * to the caller's workspace (cwd from the session header).
    */
-  runTask?(prompt: string, label?: string): Promise<WhaleTaskResult>
+  runTask?(prompt: string, label?: string, sessionId?: string): Promise<WhaleTaskResult>
 }
 
 /** Result of a pet-dispatched subagent task. */
@@ -130,13 +131,13 @@ export const localChatTransport: WhaleChatTransport = {
     )
   },
 
-  async runTask(prompt, label): Promise<WhaleTaskResult> {
+  async runTask(prompt, label, sessionId): Promise<WhaleTaskResult> {
     return proxyJson<WhaleTaskResult>(
       TASK_PROXY_PATH,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prompt, ...(label !== undefined ? { label } : {}) }),
+        body: JSON.stringify({ prompt, ...(label !== undefined ? { label } : {}), ...(sessionId !== undefined ? { session: sessionId } : {}) }),
       },
       TASK_TIMEOUT_MS,
     )

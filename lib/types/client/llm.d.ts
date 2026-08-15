@@ -56,9 +56,10 @@ export interface WhaleChatTransport {
     getProgress?(sessionId: string): Promise<WhaleSessionProgress>;
     /**
      * Optional subagent task dispatch: spawn a real child conversation in the
-     * workspace and wait for its final output.
+     * workspace and wait for its final output. `sessionId` anchors the child
+     * to the caller's workspace (cwd from the session header).
      */
-    runTask?(prompt: string, label?: string): Promise<WhaleTaskResult>;
+    runTask?(prompt: string, label?: string, sessionId?: string): Promise<WhaleTaskResult>;
 }
 /** Result of a pet-dispatched subagent task. */
 export interface WhaleTaskResult {

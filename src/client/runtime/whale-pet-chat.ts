@@ -185,7 +185,7 @@ export class WhalePetChat {
       const task = extractTaskRequest(reply)
       const intent = taskIntent(text)
       if (this.transport.runTask !== undefined && (task !== null || intent !== null)) {
-        await this.dispatchTask(memory, text, task ?? { prompt: intent! }, options)
+        await this.dispatchTask(memory, text, task ?? { prompt: intent! }, progress?.sessionId, options)
         return
       }
       const cleanReply = stripMemoryMarkers(reply)
@@ -208,13 +208,14 @@ export class WhalePetChat {
     memory: WhaleMemory,
     userText: string,
     task: { prompt: string; note?: string },
+    sessionId: string | undefined,
     options?: WhaleChatOptions,
   ): Promise<void> {
     if (this.transport.runTask === undefined) return
     this.service.showBubble('这个有点难，我派个小助手去干活，稍等～', 8_000)
     this.service.playEffect('bubble')
     try {
-      const result = await this.transport.runTask(task.prompt, '鲸鲸的任务')
+      const result = await this.transport.runTask(task.prompt, '鲸鲸的任务', sessionId)
       const summary = result.completed
         ? `搞定！${result.output.slice(0, 900)}`
         : `任务还在跑（会话 ${result.sessionId}），我拿到的是：${result.output.slice(0, 300)}`

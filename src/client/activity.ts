@@ -47,6 +47,31 @@ export interface WhalePetViewSnapshot {
 
 export const IDLE_ACTIVITY: WhaleActivity = Object.freeze({ mood: 'idle', intensity: 0 })
 
+/**
+ * Moods where the agent is actively doing something (wake the pet, advance
+ * the look/patrol clocks, keep patrols near an edge).
+ */
+export const ACTIVE_MOODS: ReadonlySet<WhaleMood> = Object.freeze(
+  new Set<WhaleMood>(['thinking', 'working', 'focused', 'celebrating']),
+)
+
+/**
+ * Moods where the pet engages with the live session (gaze toward the input
+ * area). A strict subset of {@link ACTIVE_MOODS}: celebration is active but
+ * does not keep staring at the input box.
+ */
+export const SESSION_ENGAGED_MOODS: ReadonlySet<WhaleMood> = Object.freeze(
+  new Set<WhaleMood>(['thinking', 'working', 'focused']),
+)
+
+export function isActiveMood(mood: WhaleMood): boolean {
+  return ACTIVE_MOODS.has(mood)
+}
+
+export function isSessionEngaged(mood: WhaleMood): boolean {
+  return SESSION_ENGAGED_MOODS.has(mood)
+}
+
 export function sameActivity(left: WhaleActivity, right: WhaleActivity): boolean {
   return left.mood === right.mood && left.intensity === right.intensity
 }

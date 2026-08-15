@@ -81,7 +81,6 @@ export declare class WhaleMotionController {
     /** Start the next patrol now (exposed for tests and future callers). */
     patrolNow(): void;
     private beginActivePatrol;
-    private isActiveMood;
     wasClick(maximumDrag?: number): boolean;
     step(deltaSeconds: number): WhaleMotionFrame;
     private stepPatrol;

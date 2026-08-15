@@ -1,4 +1,4 @@
-import { IDLE_ACTIVITY, type WhaleActivity } from './activity.ts'
+import { IDLE_ACTIVITY, isActiveMood, isSessionEngaged, type WhaleActivity } from './activity.ts'
 
 export const PET_WIDTH = 320
 export const PET_HEIGHT = 240
@@ -194,8 +194,8 @@ export class WhaleMotionController {
   public setActivity(activity: WhaleActivity): void {
     const previous = this.activity.mood
     this.activity = activity
-    const activeNow = activity.mood === 'thinking' || activity.mood === 'working' || activity.mood === 'focused' || activity.mood === 'celebrating'
-    const activeBefore = previous === 'thinking' || previous === 'working' || previous === 'focused' || previous === 'celebrating'
+    const activeNow = isActiveMood(activity.mood)
+    const activeBefore = isActiveMood(previous)
 
     if (activeNow && !activeBefore && this.mode !== 'dragging' && this.mode !== 'patrol') {
       // Wake the pet and start a short patrol soon so session activity is
@@ -229,12 +229,7 @@ export class WhaleMotionController {
   }
 
   private beginActivePatrol(): void {
-    this.beginPatrol(this.isActiveMood() ? 60 : 0)
-  }
-
-  private isActiveMood(): boolean {
-    const mood = this.activity.mood
-    return mood === 'thinking' || mood === 'working' || mood === 'focused' || mood === 'celebrating'
+    this.beginPatrol(isActiveMood(this.activity.mood) ? 60 : 0)
   }
 
   public wasClick(maximumDrag = 7): boolean {
@@ -266,7 +261,7 @@ export class WhaleMotionController {
       } else {
         this.desiredPitch *= Math.exp(-7 * dt)
         if (!this.hovering) {
-          const activePace = this.activity.mood === 'thinking' || this.activity.mood === 'working' || this.activity.mood === 'focused'
+          const activePace = isSessionEngaged(this.activity.mood)
             ? 2.5
             : this.activity.mood === 'celebrating'
               ? 4
@@ -324,7 +319,7 @@ export class WhaleMotionController {
 
     if (!this.dragging && this.mode !== 'patrol' && this.mode !== 'loop') {
       const mood = this.activity.mood
-      const sessionFocused = mood === 'thinking' || mood === 'working' || mood === 'focused'
+      const sessionFocused = isSessionEngaged(mood)
       if (this.hovering || this.lookTime > 0) {
         this.setDesiredYaw(this.directionYaw(this.pointerX - centerX, this.pointerY - centerY))
         const lookPitch = clamp((this.pointerY - centerY) / PET_HEIGHT * 0.2, -0.2, 0.2)
@@ -368,7 +363,7 @@ export class WhaleMotionController {
     this.vx = 0
     this.vy = 0
     this.angleTarget = 0
-    const active = this.activity.mood === 'thinking' || this.activity.mood === 'working' || this.activity.mood === 'focused' || this.activity.mood === 'celebrating'
+    const active = isActiveMood(this.activity.mood)
     this.nextPatrol = active ? 5 + this.random() * 5 : 45 + this.random() * 45
   }
 

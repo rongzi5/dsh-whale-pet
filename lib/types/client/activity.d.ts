@@ -42,4 +42,17 @@ export interface WhalePetViewSnapshot {
     bridge: WhaleBridgeState;
 }
 export declare const IDLE_ACTIVITY: WhaleActivity;
+/**
+ * Moods where the agent is actively doing something (wake the pet, advance
+ * the look/patrol clocks, keep patrols near an edge).
+ */
+export declare const ACTIVE_MOODS: ReadonlySet<WhaleMood>;
+/**
+ * Moods where the pet engages with the live session (gaze toward the input
+ * area). A strict subset of {@link ACTIVE_MOODS}: celebration is active but
+ * does not keep staring at the input box.
+ */
+export declare const SESSION_ENGAGED_MOODS: ReadonlySet<WhaleMood>;
+export declare function isActiveMood(mood: WhaleMood): boolean;
+export declare function isSessionEngaged(mood: WhaleMood): boolean;
 export declare function sameActivity(left: WhaleActivity, right: WhaleActivity): boolean;

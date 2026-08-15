@@ -75,6 +75,13 @@ export declare class WhalePetService {
     private bubbleOrigin;
     /** Celebration: hearts keep appearing for the whole loop, plus bubbles. */
     celebrate(): void;
+    /**
+     * Error reaction: one sweat drop now, then a fresh drop every
+     * {@link ERROR_SWEAT_INTERVAL_MS} until `until`, so the failure stays
+     * clearly visible instead of a single drop that blends into the idle
+     * bubbles.
+     */
+    playErrorReaction(until: number): void;
     private scheduleCelebrationHearts;
     private scheduleRecapClear;
     private nameRecap;

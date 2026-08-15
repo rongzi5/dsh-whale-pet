@@ -14,11 +14,14 @@ import { daysSince, loadWhalePetState, saveWhalePetState, type StorageLike, type
 const EFFECT_TTL_MS: Record<WhaleEffectKind, number> = {
   heart: 950,
   bubble: 1700,
-  sweat: 5000,
+  sweat: 2600,
 }
 
 const CELEBRATION_HEART_INTERVAL_MS = 650
 const CELEBRATION_EFFECTS_MS = 7_000
+
+/** Fresh sweat drops keep dripping through the whole error window. */
+const ERROR_SWEAT_INTERVAL_MS = 1_400
 
 /** How long one recap bubble stays visible after a click. */
 const RECAP_TTL_MS = 3_200
@@ -235,6 +238,29 @@ export class WhalePetService {
     this.playEffect('bubble')
     this.scheduleCelebrationHearts()
     this.controller.celebrate()
+  }
+
+  /**
+   * Error reaction: one sweat drop now, then a fresh drop every
+   * {@link ERROR_SWEAT_INTERVAL_MS} until `until`, so the failure stays
+   * clearly visible instead of a single drop that blends into the idle
+   * bubbles.
+   */
+  public playErrorReaction(until: number): void {
+    if (this.disposed) return
+    this.playEffect('sweat')
+    let timer: ReturnType<typeof setTimeout>
+    const emit = (): void => {
+      this.timers.delete(timer)
+      if (this.disposed || Date.now() >= until) return
+      this.playEffect('sweat')
+      if (Date.now() < until) {
+        timer = setTimeout(emit, ERROR_SWEAT_INTERVAL_MS)
+        this.timers.add(timer)
+      }
+    }
+    timer = setTimeout(emit, ERROR_SWEAT_INTERVAL_MS)
+    this.timers.add(timer)
   }
 
   private scheduleCelebrationHearts(): void {

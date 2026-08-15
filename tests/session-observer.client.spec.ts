@@ -186,6 +186,11 @@ describe('SessionWhaleObserver', () => {
     expect(service.getSnapshot().activity.mood).toBe('error')
     expect(service.getSnapshot().effects.some(effect => effect.kind === 'sweat')).toBe(true)
 
+    // Fresh sweat drops keep pouring through the whole error window, not
+    // just one that blends into the idle bubbles.
+    vi.advanceTimersByTime(1_500)
+    expect(service.getSnapshot().effects.some(effect => effect.kind === 'sweat')).toBe(true)
+
     // The error expression persists for the extended reaction window.
     vi.advanceTimersByTime(5_000)
     expect(service.getSnapshot().activity.mood).toBe('error')

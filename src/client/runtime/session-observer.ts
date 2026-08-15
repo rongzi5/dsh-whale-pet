@@ -343,7 +343,7 @@ export class SessionWhaleObserver {
       this.lastAgentError = agentError
       if (fresh) {
         this.transient = { mood: 'error', until: now + ERROR_MS }
-        this.service.playEffect('sweat')
+        this.service.playErrorReaction(now + ERROR_MS)
         this.service.pushRecap(errorRecapText(mark))
       }
     }

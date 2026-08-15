@@ -1104,6 +1104,8 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
     petPivot.rotation.x = f.pitch - f.motionY * motionEnergy * 0.055 + divePitch
     petPivot.rotation.z = f.roll + motionWave * motionEnergy * 0.02
     petPivot.position.y = motionBounce * patrolEnergy * 0.07 + motionWave * dragEnergy * 0.018
+    // Error: rapid trembling so the reaction cannot be missed.
+    petPivot.position.x = mood === 'error' ? Math.sin(t * 45) * 0.016 : 0
     petPivot.scale.set(
       1 + dragEnergy * 0.21 + patrolEnergy * (0.04 + motionWave * 0.015) + happyPulse * 0.012,
       1 - dragEnergy * 0.14 - patrolEnergy * (0.022 + motionWave * 0.015) + happyPulse * 0.016,
@@ -1151,8 +1153,8 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
       eyeGroup.scale.x = 1.1
       eyeGroup.scale.z = 1.1
     } else if (mood === 'error') {
-      // Startled wide-open eyes while the DOM sweat drop is visible.
-      const startle = 1 + intensity * 0.18
+      // Startled wide-open eyes while the sweat drops pour down.
+      const startle = 1 + intensity * 0.32
       eyeMat.opacity = 1
       eyeGroup.scale.set(startle, startle, startle)
     } else {

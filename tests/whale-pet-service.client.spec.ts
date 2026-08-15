@@ -78,6 +78,30 @@ describe('WhalePetService', () => {
     vi.useRealTimers()
   })
 
+  it('keeps dripping sweat drops through the whole error window', () => {
+    vi.useFakeTimers()
+    const service = new WhalePetService()
+    service.playErrorReaction(Date.now() + 8_000)
+    const sweatCount = (): number =>
+      service.getSnapshot().effects.filter(effect => effect.kind === 'sweat').length
+
+    expect(sweatCount()).toBe(1)
+    // A fresh drop lands every 1.4s while the first is still visible.
+    vi.advanceTimersByTime(1_400)
+    expect(sweatCount()).toBe(2)
+    vi.advanceTimersByTime(1_400)
+    expect(sweatCount()).toBeGreaterThanOrEqual(2)
+    // Still visibly sweating halfway through the window…
+    vi.advanceTimersByTime(4_000)
+    expect(sweatCount()).toBeGreaterThanOrEqual(1)
+    // …and everything clears after the window and the last TTL expire.
+    vi.advanceTimersByTime(6_000)
+    expect(sweatCount()).toBe(0)
+
+    service.dispose()
+    vi.useRealTimers()
+  })
+
   it('persists name, hidden flag and snap preference across reloads', () => {
     const storage = new FakeStorage()
     const service = new WhalePetService(storage)

@@ -208,6 +208,7 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
           </div>
         ) : null}
         {listening ? <span className={styles.listeningMark} aria-hidden="true">？</span> : null}
+        {snapshot.activity.mood === 'error' ? <span className={styles.errorMark} aria-hidden="true">！</span> : null}
         {error === '' ? null : <div className={styles.error}>{error}</div>}
         {hearts.map(heart => (
           <HeartPair key={heart.id} id={heart.id} />

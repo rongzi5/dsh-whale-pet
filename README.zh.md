@@ -38,7 +38,27 @@ DeepSeek Harness 3D 虎鲸桌宠的持久浏览器插件。
 
 ## 安装
 
-本插件目前通过源码安装。请准备 Node.js 22 或更高版本，然后把插件克隆到 DeepSeek Harness 源码目录：
+### 即插即用（推荐）
+
+仓库自带预构建产物（`lib/`），下载后无需 pnpm workspace 和构建步骤。运行 `dsh` 的机器需要 Node.js 22 或更高版本。
+
+1. 下载仓库（GitHub ZIP 或 `git clone`）。
+2. 运行 profile 安装脚本：
+
+   ```sh
+   node install-profile.mjs web
+   ```
+
+   脚本会把包复制到 `$DSH_HOME/profiles/web/plugins/ui-whale-pet`，
+   写入 profile 清单并创建 node_modules 链接，同时把
+   `ui-whale-pet` Cordis 条目追加到 `$DSH_HOME/profiles/web/cordis.patch.yml`。
+
+   如需安装到其他 profile，把 `web` 换成对应名称即可。
+3. 重启 `dsh web`，并强制刷新浏览器。
+
+### 从源码构建（开发）
+
+也可以把插件放进 DeepSeek Harness 源码 checkout 中安装。需要 Node.js 22 或更高版本：
 
 ```sh
 git clone https://github.com/deepseek-ai/deepseek-harness.git

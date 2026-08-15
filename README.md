@@ -40,7 +40,30 @@ Debug attributes on the pet element:
 
 ## Installation
 
-The plugin currently installs from source. Use Node.js 22 or newer, then clone it into a DeepSeek Harness checkout:
+### Plug-and-play (prebuilt, recommended)
+
+The repository ships prebuilt runtime artifacts in `lib/`, so a downloaded
+copy needs no pnpm workspace and no build step. Requires Node.js 22+ on the
+machine running `dsh`.
+
+1. Download the repository (GitHub ZIP or `git clone`).
+2. Run the profile installer:
+
+   ```sh
+   node install-profile.mjs web
+   ```
+
+   This copies the package to `$DSH_HOME/profiles/web/plugins/ui-whale-pet`,
+   adds it to the profile manifest and node_modules, and appends the
+   `ui-whale-pet` Cordis row to `$DSH_HOME/profiles/web/cordis.patch.yml`.
+
+   Use another profile name as the argument to install there.
+3. Restart `dsh web` and hard-refresh the browser.
+
+### Build from source (development)
+
+The plugin can also be installed from source inside a DeepSeek Harness
+checkout. Use Node.js 22 or newer:
 
 ```sh
 git clone https://github.com/deepseek-ai/deepseek-harness.git

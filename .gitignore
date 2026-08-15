@@ -1,3 +1,7 @@
 node_modules/
-lib/
 *.tgz
+
+# Prebuilt runtime artifacts are committed for plug-and-play installs.
+!lib/
+lib/client.js.map
+lib/types/*.js

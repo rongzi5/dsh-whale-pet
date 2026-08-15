@@ -12,6 +12,7 @@
  * touching the view, while the view remains a thin overlay shell.
  */
 
+import { IDLE_ACTIVITY, type WhaleActivity } from '../activity.ts'
 import { PET_HEIGHT, PET_WIDTH, WhaleMotionController } from '../motion.ts'
 import { createWhaleScene, type WhaleScene } from '../whale-scene.ts'
 import { WhaleRenderScheduler, type WhaleTick } from './scheduler.ts'
@@ -41,6 +42,7 @@ export class WhalePetController {
   private doc: Document | null = null
   private browser: Window | null = null
   private currentDpr = 0
+  private activity: WhaleActivity = IDLE_ACTIVITY
 
   public constructor(
     private readonly motion: WhaleMotionController = new WhaleMotionController(),
@@ -147,6 +149,17 @@ export class WhalePetController {
     return this.motion.wasClick(maximumDrag)
   }
 
+  /** Update the session-driven mood before the next rendered frame. */
+  public setActivity(activity: WhaleActivity): void {
+    this.activity = activity
+    this.motion.setActivity(activity)
+  }
+
+  /** Run the motion layer's longer celebration lap. */
+  public celebrate(): void {
+    this.motion.celebrate()
+  }
+
   private readonly resize = (): void => {
     const doc = this.doc
     const browser = this.browser
@@ -188,7 +201,7 @@ export class WhalePetController {
     targets.shadow.style.opacity = frame.dragging ? '0.08' : '0.68'
 
     try {
-      scene.render(dt, elapsed, frame)
+      scene.render(dt, elapsed, { ...frame, activity: this.activity })
     } catch (cause) {
       console.error('[ui-whale-pet] rendering the Three.js scene failed:', cause)
       this.hooks?.onError(RENDER_ERROR_MESSAGE)

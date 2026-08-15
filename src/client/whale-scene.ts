@@ -28,6 +28,8 @@
 
 import * as THREE from 'three'
 
+import type { WhaleActivity } from './activity.ts'
+
 // @types/three@0.147 does not model Material.extensions although three r147
 // initializes it to `{}`; augment so the shader's derivatives flag type-checks.
 declare module 'three' {
@@ -65,6 +67,8 @@ export interface WhaleExternalState {
   pitch: number
   /** Target roll (radians) applied to the pet pivot. */
   roll: number
+  /** Session-driven mood, supplied by the runtime service. */
+  activity: WhaleActivity
 }
 
 /** Handle returned by {@link createWhaleScene}; the parent drives everything. */
@@ -1011,6 +1015,8 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
     const delta = Math.min(Math.max(deltaSeconds, 0), 0.1)
     const hover = external.hover ? 1 : 0
     const mode = external.mode
+    const mood = external.activity.mood
+    const intensity = clamp01(external.activity.intensity)
     const speedTarget = clamp01(external.speed)
     const motionXTarget = clamp11(external.motionX)
     const motionYTarget = clamp11(external.motionY)
@@ -1037,14 +1043,31 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
     }
 
     // effective swim frequency; the phase is INTEGRATED (never elapsed * speed)
+    const swimBoost = mood === 'sleeping'
+      ? 0.3
+      : mood === 'thinking'
+        ? 1.2
+        : mood === 'working'
+          ? 1.35 + 0.2 * intensity
+          : mood === 'focused'
+            ? 1.5 + 0.25 * intensity
+            : mood === 'celebrating'
+              ? 1.7
+              : 1
     let swimSpeed = CFG.SWIM_SPEED * (1 + f.speed * 1.55)
     if (hover > 0.5) swimSpeed *= CFG.HOVER_SWIM_BOOST
+    swimSpeed *= swimBoost
     swimPhase += swimSpeed * Math.PI * 2 * delta
 
     const t = elapsedSeconds
-    const bodySway = Math.sin(swimPhase) * CFG.BODY_SWAY_AMPLITUDE
-    const pitchSway = Math.sin(swimPhase + 0.8) * CFG.PITCH_AMPLITUDE
-    const rollSway = Math.sin(swimPhase * 0.55 + 0.3) * CFG.ROLL_AMPLITUDE
+    const bodyAmp = CFG.BODY_SWAY_AMPLITUDE * (
+      mood === 'sleeping' ? 0.35 : mood === 'working' || mood === 'focused' ? 1.25 : mood === 'celebrating' ? 1.4 : 1
+    )
+    const pitchAmp = CFG.PITCH_AMPLITUDE * (mood === 'sleeping' ? 0.4 : 1)
+    const rollAmp = CFG.ROLL_AMPLITUDE * (mood === 'sleeping' ? 0.5 : 1)
+    const bodySway = Math.sin(swimPhase) * bodyAmp
+    const pitchSway = Math.sin(swimPhase + 0.8) * pitchAmp
+    const rollSway = Math.sin(swimPhase * 0.55 + 0.3) * rollAmp
 
     // filtered external pose (yaw/pitch/roll)
     const poseBlend = 1 - Math.exp(-7 * delta)
@@ -1061,16 +1084,18 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
     const motionWave = Math.sin(motionPhase)
     const motionWave2 = Math.cos(motionPhase * 0.82 + 0.35)
     const motionBounce = 0.5 - 0.5 * Math.cos(motionPhase)
-    const happyPulse = hover * (0.5 + 0.5 * Math.sin(t * 8))
+    const celebratePulse = mood === 'celebrating' ? 1 : 0
+    const happyPulse = Math.max(hover, celebratePulse) * (0.5 + 0.5 * Math.sin(t * 8))
 
     // swim pose on the body
     model.rotation.y = bodySway + motionWave * patrolEnergy * 0.06
     model.rotation.x = pitchSway - f.motionY * motionEnergy * 0.1 + motionWave2 * patrolEnergy * 0.04
     model.rotation.z = rollSway + motionWave * patrolEnergy * 0.035
 
-    // pivot pose, bounce and squash/stretch
+    // pivot pose, bounce and squash/stretch; focused turns dive slightly.
+    const divePitch = mood === 'focused' ? -0.08 * intensity : mood === 'sleeping' ? 0.02 : 0
     petPivot.rotation.y = f.yaw
-    petPivot.rotation.x = f.pitch - f.motionY * motionEnergy * 0.055
+    petPivot.rotation.x = f.pitch - f.motionY * motionEnergy * 0.055 + divePitch
     petPivot.rotation.z = f.roll + motionWave * motionEnergy * 0.02
     petPivot.position.y = motionBounce * patrolEnergy * 0.07 + motionWave * dragEnergy * 0.018
     petPivot.scale.set(
@@ -1080,41 +1105,59 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
     )
 
     // tail fluke: swim sway + motion steering + movement waves
-    const tailSwayY = Math.sin(swimPhase + 0.7) * CFG.TAIL_SWAY_AMPLITUDE
-    const tailSwayX = Math.sin(swimPhase + 1.2) * CFG.TAIL_PITCH_AMPLITUDE
+    const tailAmpY = CFG.TAIL_SWAY_AMPLITUDE * (mood === 'sleeping' ? 0.35 : mood === 'celebrating' ? 1.4 : 1)
+    const tailAmpX = CFG.TAIL_PITCH_AMPLITUDE * (mood === 'sleeping' ? 0.4 : 1)
+    const tailSwayY = Math.sin(swimPhase + 0.7) * tailAmpY
+    const tailSwayX = Math.sin(swimPhase + 1.2) * tailAmpX
     tailGroup.rotation.y = tailSwayY - f.motionX * motionEnergy * 0.28 + motionWave * patrolEnergy * 0.2 + motionWave * dragEnergy * 0.08
     tailGroup.rotation.x = tailSwayX - f.motionY * motionEnergy * 0.42 + motionWave2 * patrolEnergy * 0.25 + motionWave2 * dragEnergy * 0.12
     tailGroup.rotation.z = (CFG.TAIL_TILT_DEG * Math.PI) / 180
 
     // pectoral fins: flapping + steering
-    const pecFlap = Math.sin(swimPhase + CFG.PEC_FLAP_PHASE) * CFG.PEC_FLAP_AMPLITUDE
+    const pecAmp = CFG.PEC_FLAP_AMPLITUDE * (mood === 'sleeping' ? 0.3 : mood === 'working' || mood === 'focused' ? 1.3 : 1)
+    const pecFlap = Math.sin(swimPhase + CFG.PEC_FLAP_PHASE) * pecAmp
     for (const { pivot, side } of finPivots) {
       pivot.rotation.x = pecFlap + motionWave * patrolEnergy * 0.3 - dragEnergy * 0.52
       pivot.rotation.z = -f.motionY * motionEnergy * side * 0.15 + motionWave2 * patrolEnergy * side * 0.1
     }
 
     // gentle float (fixed frequency) + hover bob + motion bounce
-    const floatOffset = Math.sin(t * CFG.FLOAT_SPEED) * CFG.FLOAT_AMPLITUDE
+    const floatSpeed = CFG.FLOAT_SPEED * (mood === 'sleeping' ? 0.45 : 1)
+    const floatAmp = CFG.FLOAT_AMPLITUDE * (mood === 'sleeping' ? 0.4 : mood === 'celebrating' ? 1.5 : 1)
+    const floatOffset = Math.sin(t * floatSpeed) * floatAmp
     model.position.y =
       petBaseY + floatOffset + hover * Math.sin(t * 8) * 0.035 + motionBounce * patrolEnergy * 0.085 + motionWave * dragEnergy * 0.035
 
-    // blink (fixed interval driven by elapsed time, like the runtime)
-    const blinkCycle = t % CFG.BLINK_INTERVAL
-    if (blinkCycle < CFG.BLINK_DURATION) {
-      const p = blinkCycle / CFG.BLINK_DURATION
-      if (p < 0.4) {
-        eyeMat.opacity = 1 - p / 0.4
-      } else {
-        const q = (p - 0.4) / 0.6
-        eyeMat.opacity = q * q * (3 - 2 * q)
-      }
-      const eyeSquash = 1 - Math.sin(Math.min(p, 1) * Math.PI) * 0.35
-      eyeGroup.scale.y = eyeSquash
-      eyeGroup.scale.x = 1 + (1 - eyeSquash) * 0.3
-      eyeGroup.scale.z = 1 + (1 - eyeSquash) * 0.3
+    if (mood === 'sleeping') {
+      // Persistent closed eyes and a slow sleepy squash.
+      eyeMat.opacity = 0.12
+      eyeGroup.scale.y = 0.18 + 0.06 * Math.sin(t * 1.1)
+      eyeGroup.scale.x = 1.1
+      eyeGroup.scale.z = 1.1
+    } else if (mood === 'error') {
+      // Startled wide-open eyes while the DOM sweat drop is visible.
+      const startle = 1 + intensity * 0.18
+      eyeMat.opacity = 1
+      eyeGroup.scale.set(startle, startle, startle)
     } else {
-      eyeMat.opacity = 1.0
-      eyeGroup.scale.set(1, 1, 1)
+      // blink (fixed interval driven by elapsed time, like the runtime)
+      const blinkCycle = t % CFG.BLINK_INTERVAL
+      if (blinkCycle < CFG.BLINK_DURATION) {
+        const p = blinkCycle / CFG.BLINK_DURATION
+        if (p < 0.4) {
+          eyeMat.opacity = 1 - p / 0.4
+        } else {
+          const q = (p - 0.4) / 0.6
+          eyeMat.opacity = q * q * (3 - 2 * q)
+        }
+        const eyeSquash = 1 - Math.sin(Math.min(p, 1) * Math.PI) * 0.35
+        eyeGroup.scale.y = eyeSquash
+        eyeGroup.scale.x = 1 + (1 - eyeSquash) * 0.3
+        eyeGroup.scale.z = 1 + (1 - eyeSquash) * 0.3
+      } else {
+        eyeMat.opacity = 1.0
+        eyeGroup.scale.set(1, 1, 1)
+      }
     }
 
     renderer.render(scene, camera)

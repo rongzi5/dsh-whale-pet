@@ -2,21 +2,41 @@
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import { WhalePet } from './WhalePet.tsx'
+import { WhalePet, type WhalePetProps } from './WhalePet.tsx'
+import { SessionWhaleObserver, type WhaleSessionClientContext } from './runtime/session-observer.ts'
+import { WhalePetService } from './runtime/whale-pet-service.ts'
 
 export { WhaleMotionController, type WhaleMotionFrame } from './motion.ts'
-export { WhalePet } from './WhalePet.tsx'
+export { WhalePet, type WhalePetProps } from './WhalePet.tsx'
+export { SessionWhaleObserver, deriveWhaleActivity } from './runtime/session-observer.ts'
+export { WhalePetService } from './runtime/whale-pet-service.ts'
+export type { WhaleActivity, WhaleEffect, WhaleEffectKind, WhaleMood } from './activity.ts'
 export type { WhaleExternalState, WhaleScene } from './whale-scene.ts'
 
 /** Required service: the typed client slot registry. */
 export const inject = ['slots']
 
-/** Register one additive, frame-wide pet entry in the shell overlay. */
+/** Mount the runtime service and register one additive shell-overlay entry. */
 export function apply(ctx: ClientContext): void {
-  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-    name: 'shell.overlay',
-    id: 'whale-pet',
-    order: 900,
-    label: '3D whale pet',
-  }, WhalePet))
+  const whalePet = new WhalePetService()
+  const observer = new SessionWhaleObserver(ctx as unknown as WhaleSessionClientContext, whalePet)
+
+  ctx.effect(() => {
+    const disposeService = ctx.provide('whalePet', whalePet)
+    const disposeSlot = ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+      name: 'shell.overlay',
+      id: 'whale-pet',
+      order: 900,
+      label: '3D whale pet',
+      inject: () => ({ whalePet }),
+    }, WhalePet as unknown as (props: WhalePetProps) => never))
+    observer.start()
+
+    return () => {
+      disposeSlot()
+      observer.dispose()
+      disposeService()
+      whalePet.dispose()
+    }
+  }, 'ui-whale-pet: session bridge + overlay')
 }

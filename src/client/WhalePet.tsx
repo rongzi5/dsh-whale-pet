@@ -1,19 +1,24 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { WhalePetController } from './runtime/whale-pet-controller.ts'
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent } from 'react'
+import type { WhaleEffect } from './activity.ts'
+import { WhalePetService } from './runtime/whale-pet-service.ts'
 import styles from './WhalePet.module.css'
 
+export interface WhalePetProps {
+  whalePet: WhalePetService
+}
+
 /** The frame-wide interactive whale pet surface (view only). */
-export function WhalePet(): React.ReactElement {
+export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const petRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const shadowRef = useRef<HTMLSpanElement | null>(null)
-  const controllerRef = useRef<WhalePetController | null>(null)
-  if (controllerRef.current === null) controllerRef.current = new WhalePetController()
-  const controller = controllerRef.current
-
-  const [burst, setBurst] = useState(0)
   const [error, setError] = useState('')
+
+  const snapshot = useSyncExternalStore(
+    onChange => whalePet.subscribe(onChange),
+    () => whalePet.getSnapshot(),
+  )
 
   useEffect(() => {
     const root = rootRef.current
@@ -22,13 +27,13 @@ export function WhalePet(): React.ReactElement {
     const shadow = shadowRef.current
     if (root === null || pet === null || canvas === null || shadow === null) return
 
-    const started = controller.start({ root, pet, canvas, shadow }, { onError: setError })
+    const started = whalePet.mount({ root, pet, canvas, shadow }, { onError: setError })
     if (!started) return
 
     return () => {
-      controller.dispose()
+      whalePet.unmount()
     }
-  }, [controller])
+  }, [whalePet])
 
   const isPetDescendant = (target: EventTarget | null): boolean => {
     const pet = petRef.current
@@ -36,30 +41,30 @@ export function WhalePet(): React.ReactElement {
   }
 
   const react = (): void => {
-    setBurst(value => value + 1)
+    whalePet.playEffect('heart')
   }
 
   const pointerEnter = (event: PointerEvent<HTMLElement>): void => {
     if (isPetDescendant(event.relatedTarget)) return
-    controller.setHover(true)
+    whalePet.setHover(true)
     react()
   }
 
   const pointerLeave = (event: PointerEvent<HTMLElement>): void => {
     if (isPetDescendant(event.relatedTarget)) return
-    controller.setHover(false)
+    whalePet.setHover(false)
   }
 
   const pointerDown = (event: PointerEvent<HTMLElement>): void => {
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
-    controller.beginDrag(event.clientX, event.clientY)
+    whalePet.beginDrag(event.clientX, event.clientY)
   }
 
   const click = (event: React.MouseEvent<HTMLElement>): void => {
     event.stopPropagation()
-    if (controller.wasClick() === true) react()
+    if (whalePet.wasClick() === true) react()
   }
 
   const keyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
@@ -69,6 +74,10 @@ export function WhalePet(): React.ReactElement {
   }
 
   const zoneEvents = { onPointerEnter: pointerEnter, onPointerLeave: pointerLeave, onPointerDown: pointerDown, onClick: click }
+  const sleeping = snapshot.activity.mood === 'sleeping'
+  const hearts = snapshot.effects.filter(effect => effect.kind === 'heart')
+  const bubbles = snapshot.effects.filter(effect => effect.kind === 'bubble')
+  const sweat = snapshot.effects.filter(effect => effect.kind === 'sweat')
 
   return (
     <div ref={rootRef} className={styles.layer} style={{ pointerEvents: 'none' }}>
@@ -86,13 +95,39 @@ export function WhalePet(): React.ReactElement {
         <div className={`${styles.hitZone} ${styles.hitDorsal}`} aria-hidden="true" {...zoneEvents} />
         <div className={`${styles.hitZone} ${styles.hitFin}`} aria-hidden="true" {...zoneEvents} />
         {error === '' ? null : <div className={styles.error}>{error}</div>}
-        {burst === 0 ? null : (
+        {hearts.map(heart => (
+          <HeartPair key={heart.id} id={heart.id} />
+        ))}
+        {bubbles.map(bubble => (
+          <span
+            key={bubble.id}
+            className={styles.bubble}
+            style={{ '--bubble-drift': `${((bubble.id % 3) - 1) * 12}px`, '--bubble-scale': `${0.8 + (bubble.id % 3) * 0.2}` } as React.CSSProperties}
+            aria-hidden="true"
+          />
+        ))}
+        {sweat.map(drop => (
+          <span key={drop.id} className={styles.sweat} aria-hidden="true">💧</span>
+        ))}
+        {sleeping ? (
           <>
-            <span key={`${burst}-left`} className={`${styles.heart} ${styles.heartLeft}`} aria-hidden="true">♥</span>
-            <span key={`${burst}-right`} className={`${styles.heart} ${styles.heartRight}`} aria-hidden="true">♥</span>
+            <span key="zzz-1" className={`${styles.sleepMark} ${styles.sleepMarkOne}`} aria-hidden="true">z</span>
+            <span key="zzz-2" className={`${styles.sleepMark} ${styles.sleepMarkTwo}`} aria-hidden="true">Z</span>
+            <span key="zzz-3" className={`${styles.sleepMark} ${styles.sleepMarkThree}`} aria-hidden="true">Z</span>
           </>
-        )}
+        ) : null}
       </div>
     </div>
   )
 }
+
+function HeartPair({ id }: { id: number }): React.ReactElement {
+  return (
+    <>
+      <span key={`${id}-left`} className={`${styles.heart} ${styles.heartLeft}`} aria-hidden="true">♥</span>
+      <span key={`${id}-right`} className={`${styles.heart} ${styles.heartRight}`} aria-hidden="true">♥</span>
+    </>
+  )
+}
+
+export type { WhaleEffect }

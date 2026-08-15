@@ -130,6 +130,58 @@
   pointer-events: none;
 }
 
+.bubble {
+  position: absolute;
+  top: 74px;
+  left: 42px;
+  z-index: 3;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgb(111 151 255 / 72%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgb(255 255 255 / 78%), rgb(77 107 254 / 24%));
+  pointer-events: none;
+  animation: bubble-rise 1500ms ease-out forwards;
+}
+
+.sweat {
+  position: absolute;
+  top: 38px;
+  left: 86px;
+  z-index: 3;
+  font-size: 18px;
+  line-height: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgb(20 48 140 / 30%));
+  animation: sweat-drop 1500ms ease-in forwards;
+}
+
+.sleepMark {
+  position: absolute;
+  top: 26px;
+  left: 106px;
+  z-index: 3;
+  color: #9aa8d6;
+  font: 800 16px/1 system-ui, sans-serif;
+  pointer-events: none;
+  animation: sleep-drift 2600ms ease-in-out infinite;
+}
+
+.sleepMarkOne {
+  font-size: 12px;
+  animation-delay: 0ms;
+}
+
+.sleepMarkTwo {
+  font-size: 15px;
+  animation-delay: 650ms;
+}
+
+.sleepMarkThree {
+  font-size: 18px;
+  animation-delay: 1300ms;
+}
+
 @keyframes heart-rise {
   0% {
     opacity: 0;
@@ -147,8 +199,65 @@
   }
 }
 
+@keyframes bubble-rise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.5);
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(var(--bubble-drift, 0px), -46px) scale(var(--bubble-scale, 1));
+  }
+}
+
+@keyframes sweat-drop {
+  0% {
+    opacity: 0;
+    transform: translate(0, -4px) scale(0.7);
+  }
+
+  20% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(6px, 14px) scale(1);
+  }
+}
+
+@keyframes sleep-drift {
+  0% {
+    opacity: 0;
+    transform: translate(0, 6px) scale(0.7);
+  }
+
+  35% {
+    opacity: 0.85;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(12px, -18px) scale(1.15);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .heart {
+  .heart,
+  .bubble,
+  .sweat,
+  .sleepMark {
     animation-duration: 1ms;
+    animation-iteration-count: 1;
   }
 }

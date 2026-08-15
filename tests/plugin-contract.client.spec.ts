@@ -18,6 +18,16 @@ describe('ui-whale-pet plugin contract', () => {
     const entries: RecordedEntry[] = []
 
     const ctx = {
+      sessions: undefined,
+      effect(callback: () => void | (() => void)): () => void {
+        const dispose = callback()
+        return () => {
+          if (typeof dispose === 'function') dispose()
+        }
+      },
+      provide(): () => void {
+        return () => {}
+      },
       slots: {
         inject(key: string, callback: () => void): void {
           injectedKey = key

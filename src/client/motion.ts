@@ -1,3 +1,5 @@
+import { IDLE_ACTIVITY, type WhaleActivity } from './activity.ts'
+
 export const PET_WIDTH = 320
 export const PET_HEIGHT = 240
 
@@ -81,6 +83,7 @@ export class WhaleMotionController {
   private nextPatrol: number
   private desiredYaw = 0
   private desiredPitch = 0
+  private activity: WhaleActivity = IDLE_ACTIVITY
 
   public constructor(
     width = 1280,
@@ -169,6 +172,24 @@ export class WhaleMotionController {
     }
   }
 
+  /** Update the session-driven mood. */
+  public setActivity(activity: WhaleActivity): void {
+    this.activity = activity
+    if (activity.mood === 'sleeping' && this.mode === 'patrol') {
+      this.mode = 'settling'
+      this.moveTime = 0
+      this.vx = this.motionVelocityX * 0.2
+      this.vy = this.motionVelocityY * 0.2
+    }
+  }
+
+  /** Run one longer, faster edge lap; used for long-turn/goal celebrations. */
+  public celebrate(): void {
+    this.beginPatrol()
+    this.moveDuration = 3.4 + this.random() * 0.8
+    this.lookTime = this.moveDuration + 0.5
+  }
+
   public wasClick(maximumDrag = 7): boolean {
     return this.dragDistance < maximumDrag
   }
@@ -191,15 +212,24 @@ export class WhaleMotionController {
       this.stepSettling(dt)
     } else {
       this.angleTarget = 0
-      this.desiredPitch *= Math.exp(-7 * dt)
-      if (!this.hovering) {
-        this.nextLook -= dt
-        this.nextPatrol -= dt
-        if (this.nextLook <= 0) {
-          this.lookTime = 2.4 + this.random() * 2.2
-          this.nextLook = 13 + this.random() * 20
+      if (this.activity.mood === 'sleeping') {
+        this.desiredPitch *= Math.exp(-2.5 * dt)
+      } else {
+        this.desiredPitch *= Math.exp(-7 * dt)
+        if (!this.hovering) {
+          const activePace = this.activity.mood === 'thinking' || this.activity.mood === 'working' || this.activity.mood === 'focused'
+            ? 2.5
+            : this.activity.mood === 'celebrating'
+              ? 4
+              : 1
+          this.nextLook -= dt * activePace
+          this.nextPatrol -= dt * activePace
+          if (this.nextLook <= 0) {
+            this.lookTime = 2.4 + this.random() * 2.2
+            this.nextLook = 13 + this.random() * 20
+          }
+          if (this.nextPatrol <= 0) this.beginPatrol()
         }
-        if (this.nextPatrol <= 0) this.beginPatrol()
       }
     }
 
@@ -244,11 +274,20 @@ export class WhaleMotionController {
     }
 
     if (!this.dragging && this.mode !== 'patrol') {
+      const mood = this.activity.mood
+      const sessionFocused = mood === 'thinking' || mood === 'working' || mood === 'focused'
       if (this.hovering || this.lookTime > 0) {
         this.desiredYaw = this.pointerX - centerX < 0 ? 0 : Math.PI
         const lookPitch = clamp((this.pointerY - centerY) / PET_HEIGHT * 0.2, -0.2, 0.2)
         this.desiredPitch += (lookPitch - this.desiredPitch) * blend(7, dt)
         if (this.lookTime > 0) this.lookTime -= dt
+      } else if (sessionFocused && this.activity.mood !== 'sleeping') {
+        // Look toward the bottom-center input area while the agent is active.
+        const inputX = this.width * 0.5
+        const inputY = this.height * 0.88
+        this.desiredYaw = inputX - centerX < 0 ? 0 : Math.PI
+        const lookPitch = clamp((inputY - centerY) / PET_HEIGHT * 0.25, -0.25, 0.25)
+        this.desiredPitch += (lookPitch - this.desiredPitch) * blend(6, dt)
       } else {
         this.desiredYaw = this.restingYaw()
       }

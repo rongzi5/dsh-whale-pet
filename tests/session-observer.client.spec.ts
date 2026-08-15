@@ -1,0 +1,190 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { deriveWhaleActivity, SessionWhaleObserver, type ObservableLike } from '../src/client/runtime/session-observer.ts'
+import { WhalePetService } from '../src/client/runtime/whale-pet-service.ts'
+
+function createObservable<T>(initial: T): ObservableLike<T> & { set(value: T): void } {
+  let value = initial
+  const listeners = new Set<() => void>()
+  return {
+    getSnapshot: () => value,
+    subscribe(listener: () => void): () => void {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    set(next: T): void {
+      value = next
+      for (const listener of [...listeners]) listener()
+    },
+  }
+}
+
+describe('deriveWhaleActivity', () => {
+  it('derives working/thinking/focused from an active session', () => {
+    const now = 100_000
+    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 1_000, lastActivityAt: now })).toEqual({ mood: 'working', intensity: 0.7 })
+    expect(deriveWhaleActivity(now, { active: true, running: false, turnStartedAt: now, lastActivityAt: now })).toEqual({ mood: 'thinking', intensity: 0.7 })
+    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 21_000, lastActivityAt: now })).toEqual({ mood: 'focused', intensity: 1 })
+  })
+
+  it('falls asleep only after a long quiet period', () => {
+    const now = 100_000
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 10_000 })).toEqual({ mood: 'idle', intensity: 0 })
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 61_000 })).toEqual({ mood: 'sleeping', intensity: 1 })
+  })
+})
+
+describe('SessionWhaleObserver', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function setup() {
+    const list = createObservable<{ current?: string }>({ current: 'session-1' })
+    const conversation = createObservable({
+      running: false,
+      partial: null as { blocks: readonly unknown[] } | null,
+      runningCalls: [] as unknown[],
+      nodes: [] as { kind?: string; seq?: number; isError?: boolean }[],
+      lastAgentError: null as string | null,
+    })
+    const goal = createObservable<unknown>(null)
+    const plan = createObservable<unknown>({ active: false })
+    const session = {
+      ...conversation,
+      projections: {
+        faceOf(key: string): ObservableLike<unknown> {
+          if (key === 'goal') return goal
+          if (key === 'plan') return plan
+          throw new Error(`unexpected projection ${key}`)
+        },
+      },
+    }
+    const sessions = {
+      list,
+      binding(id: string): { session: typeof session } | undefined {
+        return id === 'session-1' ? { session } : undefined
+      },
+    }
+    const service = new WhalePetService()
+    const observer = new SessionWhaleObserver({ sessions }, service)
+    return { conversation, goal, list, observer, plan, service, sessions }
+  }
+
+  it('maps running tool calls to working and long turns to focused', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+
+    conversation.set({
+      running: true,
+      partial: { blocks: [1] },
+      runningCalls: [{ name: 'bash' }],
+      nodes: [],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('working')
+
+    vi.advanceTimersByTime(20_000)
+    expect(service.getSnapshot().activity.mood).toBe('focused')
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('shows a sweat effect and error mood for tool failures', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+
+    conversation.set({
+      running: true,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'tool-result', seq: 4, isError: true }],
+      lastAgentError: 'boom',
+    })
+    vi.advanceTimersByTime(200)
+
+    expect(service.getSnapshot().activity.mood).toBe('error')
+    expect(service.getSnapshot().effects.some(effect => effect.kind === 'sweat')).toBe(true)
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('celebrates completed long turns with hearts and bubbles', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+
+    conversation.set({
+      running: true,
+      partial: { blocks: [1] },
+      runningCalls: [],
+      nodes: [],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(16_000)
+    conversation.set({
+      running: false,
+      partial: null,
+      runningCalls: [],
+      nodes: [],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+
+    expect(service.getSnapshot().activity.mood).toBe('celebrating')
+    expect(service.getSnapshot().effects.some(effect => effect.kind === 'heart')).toBe(true)
+    expect(service.getSnapshot().effects.some(effect => effect.kind === 'bubble')).toBe(true)
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('celebrates a goal reaching the complete phase', () => {
+    const { goal, observer, service } = setup()
+    goal.set({ goal: { phase: 'active' } })
+    observer.start()
+
+    goal.set({ goal: { phase: 'complete' } })
+    vi.advanceTimersByTime(200)
+
+    expect(service.getSnapshot().activity.mood).toBe('celebrating')
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('falls asleep after a long quiet period', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+
+    conversation.set({
+      running: true,
+      partial: { blocks: [1] },
+      runningCalls: [],
+      nodes: [],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    conversation.set({
+      running: false,
+      partial: null,
+      runningCalls: [],
+      nodes: [],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(61_000)
+
+    expect(service.getSnapshot().activity.mood).toBe('sleeping')
+
+    observer.dispose()
+    service.dispose()
+  })
+})

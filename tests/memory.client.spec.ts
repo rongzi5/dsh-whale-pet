@@ -85,6 +85,30 @@ describe('rememberFacts / appendTurn', () => {
     expect(memory.turns.at(-1)).toEqual({ role: 'assistant', text: 'turn-15' })
   })
 
+  it('compacts evicted turns into a bounded summary instead of dropping them', () => {
+    let memory = { facts: [] as string[], turns: [] as Array<{ role: 'user' | 'assistant'; text: string }> }
+    for (let i = 0; i < 10; i += 1) {
+      memory = appendTurn(memory, i % 2 === 0 ? 'user' : 'assistant', `turn-${i}`)
+    }
+    // The two oldest turns were compacted, the 8 newest stay whole.
+    expect(memory.turns).toHaveLength(8)
+    expect(memory.turns[0]).toEqual({ role: 'user', text: 'turn-2' })
+    expect(memory.summary).toBe('turn-0；turn-1')
+
+    // Further evictions append to the existing summary.
+    memory = appendTurn(memory, 'user', 'turn-10')
+    expect(memory.summary).toBe('turn-0；turn-1；turn-2')
+    expect(memory.turns[0]).toEqual({ role: 'assistant', text: 'turn-3' })
+
+    // The summary itself stays bounded.
+    let long = { facts: [] as string[], turns: [] as Array<{ role: 'user' | 'assistant'; text: string }> }
+    for (let i = 0; i < 30; i += 1) {
+      long = appendTurn(long, 'user', `这是一段很长的对话内容用于测试压缩上限 ${'x'.repeat(200)} ${i}`)
+    }
+    expect(long.summary?.length).toBeLessThanOrEqual(400)
+    expect(long.summary?.endsWith('…')).toBe(true)
+  })
+
   it('drops blank turns', () => {
     const memory = { facts: [], turns: [] as Array<{ role: 'user' | 'assistant'; text: string }> }
     expect(appendTurn(memory, 'user', '   ').turns).toHaveLength(0)
@@ -104,6 +128,17 @@ describe('buildChatMessages', () => {
     expect(messages.map(message => message.role)).toEqual(['system', 'user', 'assistant', 'user'])
     expect(messages[0]?.content).toContain('[记住]')
     expect(messages.at(-1)?.content).toBe('记得我叫什么吗')
+  })
+
+  it('embeds the compacted summary into the system prompt', () => {
+    const memory = {
+      facts: [] as string[],
+      turns: [] as Array<{ role: 'user' | 'assistant'; text: string }>,
+      summary: '早前聊过天气和午饭',
+    }
+    const system = buildChatMessages(memory, META, '在吗')[0]?.content ?? ''
+    expect(system).toContain('早前对话的压缩摘要')
+    expect(system).toContain('早前聊过天气和午饭')
   })
 })
 

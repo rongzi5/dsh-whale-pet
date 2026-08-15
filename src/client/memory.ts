@@ -18,18 +18,25 @@ export interface WhaleMemory {
   facts: string[]
   /** Recent turns in chronological order (user/assistant interleaved). */
   turns: Array<{ role: 'user' | 'assistant'; text: string }>
+  /**
+   * Compacted digest of turns evicted by the turn cap: instead of dropping
+   * old turns outright, their text is folded into this bounded summary so
+   * long conversations keep a coarse memory of what was discussed.
+   */
+  summary?: string
 }
 
 /**
  * Bounded pet context: keep the pet's own LLM request compact so it never
  * grows unwieldy in long conversations. Worst case ≈ 24 facts × 80 chars +
- * 8 turns × 240 chars + persona ≈ 4 KB (~1.2k tokens).
+ * 8 turns × 240 chars + 400-char summary + persona ≈ 4.4 KB (~1.3k tokens).
  */
 export const WHALE_MEMORY_KEY = 'dsh.whale-pet.memory.v1'
 export const FACTS_LIMIT = 24
 export const TURNS_LIMIT = 8
 export const FACT_MAX_LENGTH = 80
 export const TURN_MAX_LENGTH = 240
+export const SUMMARY_MAX_LENGTH = 400
 
 export const WHALE_MEMORY_DEFAULTS: Readonly<WhaleMemory> = Object.freeze({
   facts: [],
@@ -81,7 +88,10 @@ export function loadWhaleMemory(storage: StorageLike | null): WhaleMemory {
       if (turns.length >= TURNS_LIMIT) break
     }
   }
-  return { facts, turns }
+  const summary = typeof record.summary === 'string' && record.summary.trim() !== ''
+    ? record.summary.trim().slice(0, SUMMARY_MAX_LENGTH)
+    : undefined
+  return { facts, turns, ...(summary !== undefined ? { summary } : {}) }
 }
 
 /** Persist the memory; storage failures degrade silently (keep running). */
@@ -102,14 +112,41 @@ export function rememberFacts(memory: WhaleMemory, facts: readonly string[]): Wh
     if (text === null || merged.includes(text)) continue
     merged.push(text)
   }
-  return { facts: merged.slice(-FACTS_LIMIT), turns: memory.turns }
+  return { facts: merged.slice(-FACTS_LIMIT), turns: memory.turns, ...(memory.summary !== undefined ? { summary: memory.summary } : {}) }
 }
 
-/** Append one conversation turn (capped at {@link TURNS_LIMIT}, oldest dropped). */
+/**
+ * Fold a batch of evicted turns into the compacted summary, bounded to
+ * {@link SUMMARY_MAX_LENGTH} (prefix-kept; the summary is coarse context).
+ */
+function compactSummary(previous: string | undefined, evicted: ReadonlyArray<{ role: 'user' | 'assistant'; text: string }>): string {
+  const parts = [
+    ...(previous !== undefined ? [previous] : []),
+    ...evicted.map(turn => turn.text),
+  ]
+  let merged = parts.join('；')
+  if (merged.length > SUMMARY_MAX_LENGTH) merged = `${merged.slice(0, SUMMARY_MAX_LENGTH - 1)}…`
+  return merged
+}
+
+/**
+ * Append one conversation turn. When the turn cap is exceeded the evicted
+ * oldest turns are compacted into {@link WhaleMemory.summary} instead of
+ * being dropped outright, so long conversations keep a coarse digest.
+ */
 export function appendTurn(memory: WhaleMemory, role: 'user' | 'assistant', text: string): WhaleMemory {
   const clean = cleanText(text, TURN_MAX_LENGTH)
   if (clean === null) return memory
-  return { facts: memory.facts, turns: [...memory.turns, { role, text: clean }].slice(-TURNS_LIMIT) }
+  const turns = [...memory.turns, { role, text: clean }]
+  if (turns.length <= TURNS_LIMIT) {
+    return { facts: memory.facts, turns, ...(memory.summary !== undefined ? { summary: memory.summary } : {}) }
+  }
+  const evicted = turns.slice(0, turns.length - TURNS_LIMIT)
+  return {
+    facts: memory.facts,
+    summary: compactSummary(memory.summary, evicted),
+    turns: turns.slice(-TURNS_LIMIT),
+  }
 }
 
 /**
@@ -130,8 +167,12 @@ export function buildSystemPrompt(
     `关于用户的记忆：\n${memory.facts.length > 0 ? memory.facts.map(fact => `- ${fact}`).join('\n') : '（还没有关于用户的记忆）'}`,
     '如果用户告诉了你值得长期记住的事实（名字、喜好、习惯、安排等），在你的回复末尾单独一行输出「[记住] 事实内容」。',
   ]
+  const blocks = [...base]
+  if (memory.summary !== undefined) {
+    blocks.push(`早前对话的压缩摘要（不必复述细节）：\n${memory.summary}`)
+  }
   const progressBlock = buildProgressContext(progress)
-  return progressBlock === null ? base.join('\n') : [...base, progressBlock].join('\n\n')
+  return progressBlock === null ? blocks.join('\n\n') : [...blocks, progressBlock].join('\n\n')
 }
 
 /** Extract `[记住] <fact>` lines from a model reply. */

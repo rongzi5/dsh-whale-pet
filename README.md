@@ -88,7 +88,10 @@ without typing.
 
 The pet's own context stays **bounded**: up to 24 memory facts (80 chars
 each) + the last 8 turns (240 chars each) + the progress block, worst case
-≈ 4 KB (~1.2k tokens), so long chats never bloat it.
+≈ 4.4 KB (~1.3k tokens). When a turn overflows the 8-turn window, evicted
+old turns are not dropped — they are **compacted** into a capped summary
+(`summary`, 400 chars) so long conversations keep a coarse digest of what
+was discussed.
 
 Debug: `GET /api/whale-pet/health` reports `{ ok, configured }`.
 
@@ -146,7 +149,7 @@ The repository builds standalone (no pnpm workspace, no dsh checkout):
 ```sh
 npm install            # dev toolchain: typescript, esbuild, vitest, three…
 npm run build          # tsc declarations + esbuild host/client bundles → lib/
-npm test               # vitest suite (118 tests)
+npm test               # vitest suite (120 tests)
 node install-profile.mjs web
 ```
 

@@ -70,7 +70,9 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
 "正在深度思考…"），无需打字。
 
 桌宠自身的上下文是**有界**的：最多 24 条记忆事实（每条 80 字符）+ 最近 8 轮对话
-（每轮 240 字符）+ 进度块，最坏约 4KB（≈1.2k tokens），长聊不会膨胀。
+（每轮 240 字符）+ 进度块，最坏约 4.4KB（≈1.3k tokens）。对话超出 8 轮时，被挤出的
+旧轮次不会直接丢弃，而是**压缩**进一条有上限的摘要（`summary`，400 字符）继续保留
+"早前聊过什么"的粗粒度记忆。
 
 调试：`GET /api/whale-pet/health` 返回 `{ ok, configured }`。
 
@@ -123,7 +125,7 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
 ```sh
 npm install            # 开发工具链：typescript、esbuild、vitest、three 等
 npm run build          # tsc 声明 + esbuild host/client 产物 → lib/
-npm test               # vitest 套件（118 个用例）
+npm test               # vitest 套件（120 个用例）
 node install-profile.mjs web
 ```
 

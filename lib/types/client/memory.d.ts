@@ -19,17 +19,24 @@ export interface WhaleMemory {
         role: 'user' | 'assistant';
         text: string;
     }>;
+    /**
+     * Compacted digest of turns evicted by the turn cap: instead of dropping
+     * old turns outright, their text is folded into this bounded summary so
+     * long conversations keep a coarse memory of what was discussed.
+     */
+    summary?: string;
 }
 /**
  * Bounded pet context: keep the pet's own LLM request compact so it never
  * grows unwieldy in long conversations. Worst case ≈ 24 facts × 80 chars +
- * 8 turns × 240 chars + persona ≈ 4 KB (~1.2k tokens).
+ * 8 turns × 240 chars + 400-char summary + persona ≈ 4.4 KB (~1.3k tokens).
  */
 export declare const WHALE_MEMORY_KEY = "dsh.whale-pet.memory.v1";
 export declare const FACTS_LIMIT = 24;
 export declare const TURNS_LIMIT = 8;
 export declare const FACT_MAX_LENGTH = 80;
 export declare const TURN_MAX_LENGTH = 240;
+export declare const SUMMARY_MAX_LENGTH = 400;
 export declare const WHALE_MEMORY_DEFAULTS: Readonly<WhaleMemory>;
 /** Read and validate the persisted memory; any failure falls back to defaults. */
 export declare function loadWhaleMemory(storage: StorageLike | null): WhaleMemory;
@@ -37,7 +44,11 @@ export declare function loadWhaleMemory(storage: StorageLike | null): WhaleMemor
 export declare function saveWhaleMemory(storage: StorageLike | null, memory: WhaleMemory): void;
 /** Add new facts (deduped, capped at {@link FACTS_LIMIT}, oldest dropped). */
 export declare function rememberFacts(memory: WhaleMemory, facts: readonly string[]): WhaleMemory;
-/** Append one conversation turn (capped at {@link TURNS_LIMIT}, oldest dropped). */
+/**
+ * Append one conversation turn. When the turn cap is exceeded the evicted
+ * oldest turns are compacted into {@link WhaleMemory.summary} instead of
+ * being dropped outright, so long conversations keep a coarse digest.
+ */
 export declare function appendTurn(memory: WhaleMemory, role: 'user' | 'assistant', text: string): WhaleMemory;
 /**
  * The pet persona + memory block handed to the model as the system prompt.

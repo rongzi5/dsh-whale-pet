@@ -216,10 +216,22 @@ export class WhaleMotionController {
     }
   }
 
-  /** Run one full 360° loop around a wide elliptical path. */
+  /** Run one longer, full 360° loop; used for long-turn/goal celebrations. */
   public celebrate(): void {
     if (this.mode === 'dragging') return
     this.startCelebrationLoop()
+  }
+
+  /** Start the next patrol/wander now (exposed for tests and future callers). */
+  public patrolNow(): void {
+    if (this.mode === 'dragging') return
+    if (this.isActiveMood()) this.beginWander()
+    else this.beginPatrol()
+  }
+
+  private isActiveMood(): boolean {
+    const mood = this.activity.mood
+    return mood === 'thinking' || mood === 'working' || mood === 'focused' || mood === 'celebrating'
   }
 
   public wasClick(maximumDrag = 7): boolean {
@@ -262,7 +274,10 @@ export class WhaleMotionController {
             this.lookTime = 2.4 + this.random() * 2.2
             this.nextLook = 13 + this.random() * 20
           }
-          if (this.nextPatrol <= 0) this.beginPatrol()
+          if (this.nextPatrol <= 0) {
+            if (this.isActiveMood()) this.beginWander()
+            else this.beginPatrol()
+          }
         }
       }
     }
@@ -411,12 +426,26 @@ export class WhaleMotionController {
     this.depthScale = 0.88 + 0.24 * (0.5 + 0.5 * Math.sin(angle))
 
     if (progress < 1) return
-    this.mode = 'settling'
+    this.beginEdgeReturn()
+  }
+
+  /**
+   * After the loop closes, glide horizontally to the nearest edge while
+   * keeping the current y, so the celebration ends resting on the edge of
+   * the same horizontal line.
+   */
+  private beginEdgeReturn(): void {
+    this.startX = this.x
+    this.startY = this.y
+    this.targetX = this.x + PET_WIDTH * 0.5 < this.width * 0.5 ? MIN_X : this.maxX()
+    this.targetY = this.y
+    this.moveDx = this.targetX - this.startX
+    this.moveDy = 0
     this.moveTime = 0
-    this.vx = tangentX / this.loopDuration
-    this.vy = tangentY / this.loopDuration
-    this.angleTarget = 0
-    this.nextPatrol = 45 + this.random() * 45
+    this.moveDuration = 1.3 + this.random() * 0.3
+    this.mode = 'patrol'
+    this.lookTime = this.moveDuration + 0.4
+    this.depthScale = 1
   }
 
   /** Ellipse center for the celebration loop (pet top-left coordinates). */
@@ -436,6 +465,41 @@ export class WhaleMotionController {
   private loopRadiusY(): number {
     const half = Math.max(0, (this.height - PET_HEIGHT) * 0.5 - MIN_Y)
     return clamp(this.height * 0.35, Math.min(100, half), Math.max(100, half))
+  }
+
+  /**
+   * Active moods wander through the outer third of the viewport instead of
+   * hugging one edge line: targets may move in any 360° direction while
+   * staying in the peripheral band.
+   */
+  private beginWander(): void {
+    const target = this.outerBandTarget()
+    this.startX = this.x
+    this.startY = this.y
+    this.targetX = target.x
+    this.targetY = target.y
+    this.moveDx = this.targetX - this.startX
+    this.moveDy = this.targetY - this.startY
+    this.moveTime = 0
+    this.moveDuration = 2.0 + this.random() * 0.8
+    this.mode = 'patrol'
+    this.lookTime = this.moveDuration + 0.5
+  }
+
+  private outerBandTarget(): { x: number; y: number } {
+    const minX = MIN_X
+    const maxX = this.maxX()
+    const minY = MIN_Y
+    const maxY = this.maxY()
+    const left = clamp(this.width / 3, minX, maxX)
+    const right = clamp((this.width * 2) / 3, minX, maxX)
+    const top = clamp(this.height / 3, minY, maxY)
+    const bottom = clamp((this.height * 2) / 3, minY, maxY)
+    const side = Math.floor(this.random() * 4)
+    if (side === 0) return { x: minX + this.random() * (left - minX), y: minY + this.random() * (maxY - minY) }
+    if (side === 1) return { x: right + this.random() * (maxX - right), y: minY + this.random() * (maxY - minY) }
+    if (side === 2) return { x: minX + this.random() * (maxX - minX), y: minY + this.random() * (top - minY) }
+    return { x: minX + this.random() * (maxX - minX), y: bottom + this.random() * (maxY - bottom) }
   }
 
   private beginPatrol(): void {

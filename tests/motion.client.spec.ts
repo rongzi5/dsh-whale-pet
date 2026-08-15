@@ -100,8 +100,9 @@ describe('WhaleMotionController', () => {
     let minScale = Number.POSITIVE_INFINITY
     let maxScale = Number.NEGATIVE_INFINITY
     let sawPatrolMode = false
+    let edgeGlideY = 0
 
-    for (let frame = 0; frame < 520; frame += 1) {
+    for (let frame = 0; frame < 620; frame += 1) {
       const view = motion.step(1 / 60)
       minX = Math.min(minX, view.x)
       maxX = Math.max(maxX, view.x)
@@ -111,7 +112,15 @@ describe('WhaleMotionController', () => {
       maxYaw = Math.max(maxYaw, view.yaw)
       minScale = Math.min(minScale, view.scale)
       maxScale = Math.max(maxScale, view.scale)
-      if (view.mode === 1) sawPatrolMode = true
+      if (view.mode === 1) {
+        sawPatrolMode = true
+        edgeGlideY = view.y
+      }
+      if (frame === 619) {
+        // Celebration must finish resting on the nearest horizontal edge.
+        expect(view.x).toBeCloseTo(1106, 1)
+        expect(view.y).toBeCloseTo(edgeGlideY, 1)
+      }
     }
 
     expect(sawPatrolMode).toBe(true)
@@ -123,5 +132,32 @@ describe('WhaleMotionController', () => {
     expect(maxYaw - minYaw).toBeGreaterThan(5.5)
     // Near (bottom) is larger than far (top) for screen-space depth.
     expect(maxScale - minScale).toBeGreaterThan(0.1)
+  })
+
+  it('wanders through the outer third in any direction while active', () => {
+    const motion = new WhaleMotionController(1440, 900, fixedRandom)
+    motion.setActivity({ mood: 'thinking', intensity: 0.7 })
+    motion.step(1 / 60)
+    motion.patrolNow()
+
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    let view = motion.step(1 / 60)
+    for (let frame = 0; frame < 400; frame += 1) {
+      view = motion.step(1 / 60)
+      minX = Math.min(minX, view.x)
+      maxX = Math.max(maxX, view.x)
+      minY = Math.min(minY, view.y)
+      maxY = Math.max(maxY, view.y)
+    }
+
+    // The path cuts diagonally across the viewport instead of hugging an edge.
+    expect(maxX - minX).toBeGreaterThan(300)
+    expect(maxY - minY).toBeGreaterThan(200)
+    // With the deterministic random it targets the top-left outer band.
+    expect(view.x).toBeCloseTo(14, 1)
+    expect(view.y).toBeCloseTo(24, 1)
   })
 })

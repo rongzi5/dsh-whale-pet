@@ -12,7 +12,7 @@ import type { SessionWhaleObserver } from './session-observer.ts'
 const EFFECT_TTL_MS: Record<WhaleEffectKind, number> = {
   heart: 950,
   bubble: 1700,
-  sweat: 3200,
+  sweat: 5000,
 }
 
 export class WhalePetService {

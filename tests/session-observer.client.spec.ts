@@ -175,6 +175,12 @@ describe('SessionWhaleObserver', () => {
     expect(service.getSnapshot().activity.mood).toBe('error')
     expect(service.getSnapshot().effects.some(effect => effect.kind === 'sweat')).toBe(true)
 
+    // The error expression persists for the extended reaction window.
+    vi.advanceTimersByTime(5_000)
+    expect(service.getSnapshot().activity.mood).toBe('error')
+    vi.advanceTimersByTime(3_500)
+    expect(service.getSnapshot().activity.mood).toBe('working')
+
     observer.dispose()
     service.dispose()
   })

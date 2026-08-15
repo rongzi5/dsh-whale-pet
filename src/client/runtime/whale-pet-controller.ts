@@ -194,7 +194,7 @@ export class WhalePetController {
     }
 
     const frame = this.motion.step(dt)
-    targets.pet.style.transform = `translate3d(${formatTransform(frame.x)}px, ${formatTransform(frame.y)}px, 0) rotate(${formatTransform(frame.angle)}deg)`
+    targets.pet.style.transform = `translate3d(${formatTransform(frame.x)}px, ${formatTransform(frame.y)}px, 0) rotate(${formatTransform(frame.angle)}deg) scale(${formatTransform(frame.scale)})`
     targets.shadow.style.transform = frame.dragging
       ? 'scale(0.7, 0.62)'
       : `scale(${formatTransform(1 + frame.speed * 0.14)}, ${formatTransform(1 - frame.speed * 0.08)})`

@@ -90,6 +90,10 @@ describe('WhaleMotionController', () => {
     let maxX = Number.NEGATIVE_INFINITY
     let minY = Number.POSITIVE_INFINITY
     let maxY = Number.NEGATIVE_INFINITY
+    let minYaw = Number.POSITIVE_INFINITY
+    let maxYaw = Number.NEGATIVE_INFINITY
+    let minScale = Number.POSITIVE_INFINITY
+    let maxScale = Number.NEGATIVE_INFINITY
     let sawPatrolMode = false
 
     for (let frame = 0; frame < 520; frame += 1) {
@@ -98,6 +102,10 @@ describe('WhaleMotionController', () => {
       maxX = Math.max(maxX, view.x)
       minY = Math.min(minY, view.y)
       maxY = Math.max(maxY, view.y)
+      minYaw = Math.min(minYaw, view.yaw)
+      maxYaw = Math.max(maxYaw, view.yaw)
+      minScale = Math.min(minScale, view.scale)
+      maxScale = Math.max(maxScale, view.scale)
       if (view.mode === 1) sawPatrolMode = true
     }
 
@@ -106,5 +114,9 @@ describe('WhaleMotionController', () => {
     expect(maxY - minY).toBeGreaterThan(350)
     expect(minX).toBeGreaterThanOrEqual(14)
     expect(minY).toBeGreaterThanOrEqual(24)
+    // The model yaw unwinds through a full 2π instead of flipping left/right.
+    expect(maxYaw - minYaw).toBeGreaterThan(5.5)
+    // Near (bottom) is larger than far (top) for screen-space depth.
+    expect(maxScale - minScale).toBeGreaterThan(0.1)
   })
 })

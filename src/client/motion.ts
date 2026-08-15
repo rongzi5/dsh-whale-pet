@@ -13,6 +13,7 @@ export interface WhaleMotionFrame {
   x: number
   y: number
   angle: number
+  scale: number
   dragging: boolean
   hover: boolean
   mode: WhaleMotionMode
@@ -70,7 +71,9 @@ export class WhaleMotionController {
   private moveDx = 0
   private moveDy = 0
   private loopStartAngle = 0
+  private loopStartYaw = 0
   private loopDuration = 7
+  private depthScale = 1
 
   private angle = 0
   private angleTarget = 0
@@ -113,6 +116,19 @@ export class WhaleMotionController {
     this.y = clamp(this.y, MIN_Y, this.maxY())
     this.dragTargetX = clamp(this.dragTargetX, MIN_X, this.maxX())
     this.dragTargetY = clamp(this.dragTargetY, MIN_Y, this.maxY())
+  }
+
+  /** Move the yaw target along the shortest angular path. */
+  private setDesiredYaw(target: number): void {
+    let delta = target - this.desiredYaw
+    delta = Math.atan2(Math.sin(delta), Math.cos(delta))
+    this.desiredYaw += delta
+  }
+
+  /** Screen direction to continuous model yaw (0 = facing left, π = facing right). */
+  private directionYaw(dx: number, dy: number): number {
+    if (Math.hypot(dx, dy) < 0.001) return this.desiredYaw
+    return Math.PI - Math.atan2(dy, dx)
   }
 
   public pointerMove(x: number, y: number): void {
@@ -283,19 +299,19 @@ export class WhaleMotionController {
     }
 
     if (this.dragging) {
-      if (this.motionSpeed > 0.04 && Math.abs(this.motionDirectionX) > 0.12) {
-        this.desiredYaw = this.motionDirectionX < 0 ? 0 : Math.PI
+      if (this.motionSpeed > 0.04 && directionLength > 0.12) {
+        this.setDesiredYaw(this.directionYaw(this.motionDirectionX, this.motionDirectionY))
       }
       const pitchTarget = clamp(-this.motionDirectionY * this.motionSpeed * 0.28, -0.28, 0.28)
       this.desiredPitch += (pitchTarget - this.desiredPitch) * blend(9, dt)
       this.angleTarget = clamp(this.motionDirectionY * this.motionSpeed * 10, -10, 10)
     }
 
-    if (!this.dragging && this.mode !== 'patrol') {
+    if (!this.dragging && this.mode !== 'patrol' && this.mode !== 'loop') {
       const mood = this.activity.mood
       const sessionFocused = mood === 'thinking' || mood === 'working' || mood === 'focused'
       if (this.hovering || this.lookTime > 0) {
-        this.desiredYaw = this.pointerX - centerX < 0 ? 0 : Math.PI
+        this.setDesiredYaw(this.directionYaw(this.pointerX - centerX, this.pointerY - centerY))
         const lookPitch = clamp((this.pointerY - centerY) / PET_HEIGHT * 0.2, -0.2, 0.2)
         this.desiredPitch += (lookPitch - this.desiredPitch) * blend(7, dt)
         if (this.lookTime > 0) this.lookTime -= dt
@@ -303,11 +319,11 @@ export class WhaleMotionController {
         // Look toward the bottom-center input area while the agent is active.
         const inputX = this.width * 0.5
         const inputY = this.height * 0.88
-        this.desiredYaw = inputX - centerX < 0 ? 0 : Math.PI
+        this.setDesiredYaw(this.directionYaw(inputX - centerX, inputY - centerY))
         const lookPitch = clamp((inputY - centerY) / PET_HEIGHT * 0.25, -0.25, 0.25)
         this.desiredPitch += (lookPitch - this.desiredPitch) * blend(6, dt)
       } else {
-        this.desiredYaw = this.restingYaw()
+        this.setDesiredYaw(this.restingYaw())
       }
     }
 
@@ -327,7 +343,7 @@ export class WhaleMotionController {
     this.x = this.startX + this.moveDx * eased - ny * wriggle
     this.y = this.startY + this.moveDy * eased + nx * wriggle
     this.angleTarget = clamp(ny * 8 + Math.sin(progress * Math.PI * 6) * envelope * 3, -11, 11)
-    if (Math.abs(this.moveDx) > 4) this.desiredYaw = this.moveDx < 0 ? 0 : Math.PI
+    if (length > 4) this.setDesiredYaw(this.directionYaw(nx, ny))
     this.desiredPitch = clamp(-ny * 0.18, -0.22, 0.22)
     if (progress < 1) return
     this.x = this.targetX
@@ -361,6 +377,7 @@ export class WhaleMotionController {
     const baseX = this.loopBaseX()
     const baseY = this.loopBaseY()
     this.loopStartAngle = Math.atan2(this.y - baseY, this.x - baseX)
+    this.loopStartYaw = Math.PI - this.loopStartAngle
     this.loopDuration = 6.5 + this.random() * 1.0
     this.moveTime = 0
     this.mode = 'loop'
@@ -379,12 +396,17 @@ export class WhaleMotionController {
     this.x = clamp(baseX + Math.cos(angle) * radiusX, MIN_X, this.maxX())
     this.y = clamp(baseY + Math.sin(angle) * radiusY, MIN_Y, this.maxY())
 
-    // Face the tangent direction of the loop.
+    // Face the tangent direction continuously: the model yaw unwinds by a
+    // full 2π over the loop instead of snapping between left and right.
+    this.desiredYaw = this.loopStartYaw - eased * Math.PI * 2
     const tangentX = -Math.sin(angle) * radiusX
     const tangentY = Math.cos(angle) * radiusY
-    this.desiredYaw = tangentX < 0 ? 0 : Math.PI
     this.desiredPitch = clamp(-tangentY / Math.max(1, radiusY) * 0.22, -0.22, 0.22)
     this.angleTarget = clamp(tangentY / Math.max(1, radiusY) * 10, -10, 10)
+
+    // Screen-space depth: the bottom (near) part of the ellipse is closer
+    // and larger, the top (far) part smaller.
+    this.depthScale = 0.88 + 0.24 * (0.5 + 0.5 * Math.sin(angle))
 
     if (progress < 1) return
     this.mode = 'settling'
@@ -498,6 +520,7 @@ export class WhaleMotionController {
       x: this.x,
       y: this.y,
       angle: this.angle,
+      scale: this.mode === 'loop' ? this.depthScale : 1,
       dragging: this.dragging,
       hover: this.hovering,
       mode,

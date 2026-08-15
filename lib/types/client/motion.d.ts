@@ -78,8 +78,9 @@ export declare class WhaleMotionController {
     setActivity(activity: WhaleActivity): void;
     /** Run one longer, full 360° loop; used for long-turn/goal celebrations. */
     celebrate(): void;
-    /** Start the next patrol/wander now (exposed for tests and future callers). */
+    /** Start the next patrol now (exposed for tests and future callers). */
     patrolNow(): void;
+    private beginActivePatrol;
     private isActiveMood;
     wasClick(maximumDrag?: number): boolean;
     step(deltaSeconds: number): WhaleMotionFrame;
@@ -99,12 +100,9 @@ export declare class WhaleMotionController {
     private loopRadiusX;
     private loopRadiusY;
     /**
-     * Active moods wander through the outer third of the viewport instead of
-     * hugging one edge line: targets may move in any 360° direction while
-     * staying in the peripheral band.
+     * Start an edge patrol. Active moods receive a small perpendicular drift
+     * so they stay near the boundary but are not pinned to a single line.
      */
-    private beginWander;
-    private outerBandTarget;
     private beginPatrol;
     private nearestEdge;
     private restingYaw;

@@ -134,7 +134,7 @@ describe('WhaleMotionController', () => {
     expect(maxScale - minScale).toBeGreaterThan(0.1)
   })
 
-  it('wanders through the outer third in any direction while active', () => {
+  it('keeps active patrols near an edge with slight lateral drift', () => {
     const motion = new WhaleMotionController(1440, 900, fixedRandom)
     motion.setActivity({ mood: 'thinking', intensity: 0.7 })
     motion.step(1 / 60)
@@ -144,20 +144,18 @@ describe('WhaleMotionController', () => {
     let maxX = Number.NEGATIVE_INFINITY
     let minY = Number.POSITIVE_INFINITY
     let maxY = Number.NEGATIVE_INFINITY
-    let view = motion.step(1 / 60)
     for (let frame = 0; frame < 400; frame += 1) {
-      view = motion.step(1 / 60)
+      const view = motion.step(1 / 60)
       minX = Math.min(minX, view.x)
       maxX = Math.max(maxX, view.x)
       minY = Math.min(minY, view.y)
       maxY = Math.max(maxY, view.y)
     }
 
-    // The path cuts diagonally across the viewport instead of hugging an edge.
-    expect(maxX - minX).toBeGreaterThan(300)
-    expect(maxY - minY).toBeGreaterThan(200)
-    // With the deterministic random it targets the top-left outer band.
-    expect(view.x).toBeCloseTo(14, 1)
-    expect(view.y).toBeCloseTo(24, 1)
+    // The path stays near a boundary instead of cutting across the viewport.
+    expect(maxX - minX).toBeGreaterThan(40)
+    expect(maxY - minY).toBeLessThan(180)
+    expect(minX).toBeGreaterThanOrEqual(14)
+    expect(minY).toBeGreaterThanOrEqual(24)
   })
 })

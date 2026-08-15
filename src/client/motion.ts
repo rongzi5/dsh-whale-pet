@@ -222,11 +222,14 @@ export class WhaleMotionController {
     this.startCelebrationLoop()
   }
 
-  /** Start the next patrol/wander now (exposed for tests and future callers). */
+  /** Start the next patrol now (exposed for tests and future callers). */
   public patrolNow(): void {
     if (this.mode === 'dragging') return
-    if (this.isActiveMood()) this.beginWander()
-    else this.beginPatrol()
+    this.beginActivePatrol()
+  }
+
+  private beginActivePatrol(): void {
+    this.beginPatrol(this.isActiveMood() ? 60 : 0)
   }
 
   private isActiveMood(): boolean {
@@ -274,10 +277,7 @@ export class WhaleMotionController {
             this.lookTime = 2.4 + this.random() * 2.2
             this.nextLook = 13 + this.random() * 20
           }
-          if (this.nextPatrol <= 0) {
-            if (this.isActiveMood()) this.beginWander()
-            else this.beginPatrol()
-          }
+          if (this.nextPatrol <= 0) this.beginActivePatrol()
         }
       }
     }
@@ -468,41 +468,10 @@ export class WhaleMotionController {
   }
 
   /**
-   * Active moods wander through the outer third of the viewport instead of
-   * hugging one edge line: targets may move in any 360° direction while
-   * staying in the peripheral band.
+   * Start an edge patrol. Active moods receive a small perpendicular drift
+   * so they stay near the boundary but are not pinned to a single line.
    */
-  private beginWander(): void {
-    const target = this.outerBandTarget()
-    this.startX = this.x
-    this.startY = this.y
-    this.targetX = target.x
-    this.targetY = target.y
-    this.moveDx = this.targetX - this.startX
-    this.moveDy = this.targetY - this.startY
-    this.moveTime = 0
-    this.moveDuration = 2.0 + this.random() * 0.8
-    this.mode = 'patrol'
-    this.lookTime = this.moveDuration + 0.5
-  }
-
-  private outerBandTarget(): { x: number; y: number } {
-    const minX = MIN_X
-    const maxX = this.maxX()
-    const minY = MIN_Y
-    const maxY = this.maxY()
-    const left = clamp(this.width / 3, minX, maxX)
-    const right = clamp((this.width * 2) / 3, minX, maxX)
-    const top = clamp(this.height / 3, minY, maxY)
-    const bottom = clamp((this.height * 2) / 3, minY, maxY)
-    const side = Math.floor(this.random() * 4)
-    if (side === 0) return { x: minX + this.random() * (left - minX), y: minY + this.random() * (maxY - minY) }
-    if (side === 1) return { x: right + this.random() * (maxX - right), y: minY + this.random() * (maxY - minY) }
-    if (side === 2) return { x: minX + this.random() * (maxX - minX), y: minY + this.random() * (top - minY) }
-    return { x: minX + this.random() * (maxX - minX), y: bottom + this.random() * (maxY - bottom) }
-  }
-
-  private beginPatrol(): void {
+  private beginPatrol(lateralDrift = 0): void {
     const edge = this.nearestEdge()
     const travel = 100 + this.random() * 80
     const pointerX = this.hasPointer ? this.pointerX : this.width * 0.5
@@ -514,16 +483,20 @@ export class WhaleMotionController {
 
     if (edge === 'top' || edge === 'bottom') {
       const edgeY = edge === 'top' ? 18 : Math.max(18, this.height - PET_HEIGHT - 14)
+      const drift = lateralDrift > 0 ? (this.random() - 0.5) * lateralDrift * 2 : 0
+      const lineY = clamp(edgeY + drift, MIN_Y, this.maxY())
       ax = clamp(this.x - travel, MIN_X, this.maxX())
       bx = clamp(this.x + travel, MIN_X, this.maxX())
-      ay = edgeY
-      by = edgeY
+      ay = lineY
+      by = lineY
     } else {
       const edgeX = edge === 'left' ? MIN_X : this.maxX()
+      const drift = lateralDrift > 0 ? (this.random() - 0.5) * lateralDrift * 2 : 0
+      const lineX = clamp(edgeX + drift, MIN_X, this.maxX())
       ay = clamp(this.y - travel, MIN_Y, this.maxY())
       by = clamp(this.y + travel, MIN_Y, this.maxY())
-      ax = edgeX
-      bx = edgeX
+      ax = lineX
+      bx = lineX
     }
 
     const distanceA = Math.hypot(ax + PET_WIDTH * 0.5 - pointerX, ay + PET_HEIGHT * 0.5 - pointerY)

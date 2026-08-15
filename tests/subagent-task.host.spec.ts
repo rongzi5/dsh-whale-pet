@@ -91,7 +91,7 @@ describe('createTaskHandler', () => {
         completed: true,
       })
       expect(agent.followupCalls).toHaveLength(1)
-      expect(agent.followupCalls[0]?.content[0]?.text).toContain('任务：帮我写 hello.py')
+      expect(agent.followupCalls[0]?.content[0]?.text).toContain('鲸鲸的任务：帮我写 hello.py')
       expect(agents.createCalls).toBe(1)
       expect(agent.cancelled).toBe(false)
     } finally {

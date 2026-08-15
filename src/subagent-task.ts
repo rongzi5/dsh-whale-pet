@@ -46,11 +46,15 @@ function textOf(blocks: ReadonlyArray<{ type?: string; text?: unknown }> | undef
 
 /** Default persona for pet-dispatched child agents. */
 function taskPersona(prompt: string): string {
+  // The first line seeds the session title ("鲸鲸的任务：…").
+  const firstLine = prompt.split('\n')[0]?.trim() ?? prompt
   return [
+    `鲸鲸的任务：${firstLine.slice(0, 40)}`,
+    '',
     '你是 DeepSeek Harness 里的任务助手，桌宠鲸鲸替用户派发了这个任务。',
     '请独立完成它：可以调用工具（bash、文件、搜索等）实际执行，不要只给方案。',
     '任务完成后，用一段简洁的总结说明你做了什么和最终结果（含关键输出）。',
-    `任务：${prompt}`,
+    `完整任务：${prompt}`,
   ].join('\n')
 }
 

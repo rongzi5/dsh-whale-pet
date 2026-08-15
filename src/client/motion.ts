@@ -503,7 +503,6 @@ export class WhaleMotionController {
     // Face the tangent direction continuously: the model yaw unwinds by a
     // full 2π over the loop instead of snapping between left and right.
     this.desiredYaw = this.loopStartYaw - eased * Math.PI * 2
-    const tangentX = -Math.sin(angle) * radiusX
     const tangentY = Math.cos(angle) * radiusY
     this.desiredPitch = clamp(-tangentY / Math.max(1, radiusY) * 0.22, -0.22, 0.22)
     this.angleTarget = clamp(tangentY / Math.max(1, radiusY) * 10, -10, 10)

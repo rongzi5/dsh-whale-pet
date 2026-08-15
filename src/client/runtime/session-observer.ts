@@ -123,6 +123,52 @@ function errorRecapText(mark: ErrorMark): string {
 }
 
 /**
+ * Whether a failure node is fresh enough to react to. Timestamped nodes are
+ * fresh when they arrived after the session bridge bound; untimestamped nodes
+ * use the settle window as a proxy so late-arriving history is absorbed.
+ */
+function isFreshError(mark: ErrorMark, boundAt: number, now: number): boolean {
+  const timestamped = Number.isFinite(mark.time)
+  return timestamped
+    ? mark.time >= boundAt
+    : now - boundAt >= ERROR_SETTLE_MS
+}
+
+/** Whether a completed turn is long enough to celebrate, outside an error. */
+function shouldCelebrateCompletedTurn(
+  wasRunning: boolean,
+  running: boolean,
+  turnStartedAt: number,
+  now: number,
+  transient: TransientMood | null,
+): boolean {
+  if (!wasRunning || running) return false
+  const turnMs = now - turnStartedAt
+  return turnMs >= LONG_TURN_MS && (transient === null || transient.mood !== 'error')
+}
+
+/** Classify a goal projection transition for recap/celebration purposes. */
+function classifyGoalTransition(
+  previous: string | undefined,
+  next: string | undefined,
+): 'completed' | 'phase' | null {
+  if (previous === undefined || next === undefined || previous === next) return null
+  if (previous !== 'complete' && next === 'complete') return 'completed'
+  if (next !== 'complete') return 'phase'
+  return null
+}
+
+/** Classify a plan projection transition for recap/celebration purposes. */
+function classifyPlanTransition(
+  previous: boolean | undefined,
+  next: boolean | undefined,
+): 'exited' | null {
+  if (previous === undefined || next === undefined || previous === next) return null
+  if (previous && !next) return 'exited'
+  return null
+}
+
+/**
  * Pure mood derivation, separated for tests.
  * @returns the non-transient mood for the sampled session state.
  */
@@ -152,6 +198,7 @@ export function deriveWhaleActivity(
 
 export class SessionWhaleObserver {
   private listDispose: (() => void) | null = null
+  private sessionDispose: (() => void) | null = null
   private timer: ReturnType<typeof setInterval> | null = null
   private sessions: SessionsLike | null = null
   private sessionId: string | undefined
@@ -163,7 +210,6 @@ export class SessionWhaleObserver {
   private turnStartedAt = 0
   private lastActivityAt = Date.now()
   private lastErrorSeq = -1
-  private lastAgentError: string | null = null
   private knownGoalPhase: string | undefined
   private knownPlanActive: boolean | undefined
   private transient: TransientMood | null = null
@@ -199,6 +245,8 @@ export class SessionWhaleObserver {
     this.disposed = true
     this.listDispose?.()
     this.listDispose = null
+    this.sessionDispose?.()
+    this.sessionDispose = null
     if (this.timer !== null) clearInterval(this.timer)
     this.timer = null
     this.sessions = null
@@ -258,6 +306,8 @@ export class SessionWhaleObserver {
     const current = sessions.list.getSnapshot().current
     if (current !== this.sessionId) {
       this.sessionId = current
+      this.sessionDispose?.()
+      this.sessionDispose = null
       this.session = null
       this.goalFace = null
       this.planFace = null
@@ -265,7 +315,7 @@ export class SessionWhaleObserver {
       this.turnStartedAt = 0
       this.lastActivityAt = Date.now()
       this.lastErrorSeq = -1
-      this.lastAgentError = null
+      this.lastNodeCount = -1
       this.knownGoalPhase = undefined
       this.knownPlanActive = undefined
       this.transient = null
@@ -281,6 +331,9 @@ export class SessionWhaleObserver {
     this.session = binding.session
     this.goalFace = safeProjection(binding.session, 'goal')
     this.planFace = safeProjection(binding.session, 'plan')
+    this.sessionDispose = binding.session.subscribe(() => {
+      if (this.sessions === sessions) this.sample(sessions)
+    })
     this.seedProjections()
     const snapshot = binding.session.getSnapshot()
     this.boundAt = Date.now()
@@ -288,7 +341,6 @@ export class SessionWhaleObserver {
     this.turnStartedAt = snapshot.running ? Date.now() : 0
     this.lastActivityAt = Date.now()
     this.lastErrorSeq = latestError(snapshot.nodes)?.seq ?? -1
-    this.lastAgentError = snapshot.lastAgentError ?? null
     console.debug('[ui-whale-pet] session bridge bound', current, {
       running: snapshot.running,
       calls: snapshot.runningCalls.length,
@@ -322,7 +374,6 @@ export class SessionWhaleObserver {
     // before the bind) are absorbed, while a genuinely new failure fires
     // immediately even inside the settle window.
     const mark = latestError(snapshot.nodes)
-    const agentError = snapshot.lastAgentError ?? null
     if (snapshot.nodes.length !== this.lastNodeCount) {
       this.lastNodeCount = snapshot.nodes.length
       const tail = snapshot.nodes.slice(-4).map(node => ({
@@ -335,12 +386,8 @@ export class SessionWhaleObserver {
       console.debug('[ui-whale-pet] conversation nodes ->', snapshot.nodes.length, JSON.stringify(tail))
     }
     if (mark !== null && mark.seq > this.lastErrorSeq) {
-      const timestamped = Number.isFinite(mark.time)
-      const fresh = timestamped
-        ? mark.time >= this.boundAt
-        : now - this.boundAt >= ERROR_SETTLE_MS
+      const fresh = isFreshError(mark, this.boundAt, now)
       this.lastErrorSeq = mark.seq
-      this.lastAgentError = agentError
       if (fresh) {
         this.transient = { mood: 'error', until: now + ERROR_MS }
         this.service.playErrorReaction(now + ERROR_MS)
@@ -352,31 +399,26 @@ export class SessionWhaleObserver {
     if (snapshot.running && !this.wasRunning) {
       this.turnStartedAt = now
     }
-    if (!snapshot.running && this.wasRunning) {
-      const turnMs = now - this.turnStartedAt
-      if (turnMs >= LONG_TURN_MS && (this.transient === null || this.transient.mood !== 'error')) {
-        this.celebrate(now)
-        this.service.pushRecap('长回合完成 🎉')
-      }
+    if (shouldCelebrateCompletedTurn(this.wasRunning, snapshot.running, this.turnStartedAt, now, this.transient)) {
+      this.celebrate(now)
+      this.service.pushRecap('长回合完成 🎉')
     }
 
     const goalPhase = readGoalPhase(this.goalFace)
-    if (goalPhase !== undefined && this.knownGoalPhase !== undefined && goalPhase !== this.knownGoalPhase) {
-      if (this.knownGoalPhase !== 'complete' && goalPhase === 'complete') {
-        this.celebrate(now)
-        this.service.pushRecap('goal 达成 🎉')
-      } else if (goalPhase !== 'complete') {
-        this.service.pushRecap(`goal 阶段：${goalPhase}`)
-      }
+    const goalTransition = classifyGoalTransition(this.knownGoalPhase, goalPhase)
+    if (goalTransition === 'completed') {
+      this.celebrate(now)
+      this.service.pushRecap('goal 达成 🎉')
+    } else if (goalTransition === 'phase') {
+      this.service.pushRecap(`goal 阶段：${goalPhase}`)
     }
     if (goalPhase !== undefined) this.knownGoalPhase = goalPhase
 
     const planActive = readPlanActive(this.planFace)
-    if (planActive !== undefined && this.knownPlanActive !== undefined && planActive !== this.knownPlanActive) {
-      if (this.knownPlanActive && !planActive) {
-        this.celebrate(now)
-        this.service.pushRecap('退出 plan')
-      }
+    const planTransition = classifyPlanTransition(this.knownPlanActive, planActive)
+    if (planTransition === 'exited') {
+      this.celebrate(now)
+      this.service.pushRecap('退出 plan')
     }
     if (planActive !== undefined) this.knownPlanActive = planActive
 

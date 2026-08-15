@@ -83,6 +83,11 @@ export declare class WhalePetService {
      */
     playErrorReaction(until: number): void;
     private scheduleCelebrationHearts;
+    /**
+     * Run `emit` on a fixed interval until `deadline`, tracking each timer in
+     * `this.timers` so `dispose()` can always clear the chain.
+     */
+    private intervalUntil;
     private scheduleRecapClear;
     private nameRecap;
     /** Release timers, listeners and the WebGL surface. */

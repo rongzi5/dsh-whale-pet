@@ -81,8 +81,8 @@ export class WhalePetService {
   /** Wake a sleeping pet on hover/drag and refresh the session idle clock. */
   public wake(): void {
     this.observer?.noteUserActivity()
+    // setActivity already forwards the mood to the motion controller.
     this.setActivity(IDLE_ACTIVITY)
-    this.controller.setActivity(IDLE_ACTIVITY)
   }
 
   /** The user is composing a reply (view-driven DOM focus); wakes the pet. */
@@ -249,33 +249,34 @@ export class WhalePetService {
   public playErrorReaction(until: number): void {
     if (this.disposed) return
     this.playEffect('sweat')
-    let timer: ReturnType<typeof setTimeout>
-    const emit = (): void => {
-      this.timers.delete(timer)
-      if (this.disposed || Date.now() >= until) return
-      this.playEffect('sweat')
-      if (Date.now() < until) {
-        timer = setTimeout(emit, ERROR_SWEAT_INTERVAL_MS)
-        this.timers.add(timer)
-      }
-    }
-    timer = setTimeout(emit, ERROR_SWEAT_INTERVAL_MS)
-    this.timers.add(timer)
+    this.intervalUntil(until, ERROR_SWEAT_INTERVAL_MS, () => {
+      if (Date.now() < until) this.playEffect('sweat')
+    })
   }
 
   private scheduleCelebrationHearts(): void {
     const deadline = Date.now() + CELEBRATION_EFFECTS_MS
+    this.intervalUntil(deadline, CELEBRATION_HEART_INTERVAL_MS, () => {
+      this.playEffect('heart')
+    })
+  }
+
+  /**
+   * Run `emit` on a fixed interval until `deadline`, tracking each timer in
+   * `this.timers` so `dispose()` can always clear the chain.
+   */
+  private intervalUntil(deadline: number, intervalMs: number, emit: () => void): void {
     let timer: ReturnType<typeof setTimeout>
-    const emit = (): void => {
+    const tick = (): void => {
       this.timers.delete(timer)
       if (this.disposed) return
-      this.playEffect('heart')
+      emit()
       if (Date.now() < deadline) {
-        timer = setTimeout(emit, CELEBRATION_HEART_INTERVAL_MS)
+        timer = setTimeout(tick, intervalMs)
         this.timers.add(timer)
       }
     }
-    timer = setTimeout(emit, CELEBRATION_HEART_INTERVAL_MS)
+    timer = setTimeout(tick, intervalMs)
     this.timers.add(timer)
   }
 

@@ -14,7 +14,7 @@
 
 import { IDLE_ACTIVITY, type WhaleActivity } from '../activity.ts'
 import { PET_HEIGHT, PET_WIDTH, WhaleMotionController } from '../motion.ts'
-import { createWhaleScene, type WhaleScene } from '../whale-scene.ts'
+import { createWhaleScene, type WhaleScene } from '../whale/scene.ts'
 import { WhaleRenderScheduler, type WhaleTick } from './scheduler.ts'
 
 const RENDER_ERROR_MESSAGE = '3D 模型不可用'
@@ -91,7 +91,8 @@ export class WhalePetController {
     doc.addEventListener('pointermove', this.handlePointerMove, { passive: true })
     doc.addEventListener('pointerup', this.handleRelease, { passive: true })
     doc.addEventListener('pointercancel', this.handleRelease, { passive: true })
-    this.scheduler.start(this.render)
+    // Hidden pets do not need a frame chain until they are shown again.
+    if (!this.hidden) this.scheduler.start(this.render)
     return true
   }
 
@@ -161,7 +162,15 @@ export class WhalePetController {
 
   /** Pause rendering and motion while the pet is hidden. */
   public setHidden(hidden: boolean): void {
+    if (this.hidden === hidden) return
     this.hidden = hidden
+    const scheduler = this.scheduler
+    if (scheduler === null) return
+    if (hidden) {
+      scheduler.stop()
+    } else {
+      scheduler.start(this.render)
+    }
   }
 
   /** Run the motion layer's longer celebration lap. */

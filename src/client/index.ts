@@ -13,29 +13,27 @@ export { SessionWhaleObserver, deriveWhaleActivity } from './runtime/session-obs
 export { WhalePetService } from './runtime/whale-pet-service.ts'
 export { loadWhalePetState, saveWhalePetState, WHALE_PET_DEFAULTS, type WhalePetPersistedState } from './persistence.ts'
 export type { WhaleActivity, WhaleEffect, WhaleEffectKind, WhaleMood, WhaleRecap } from './activity.ts'
-export type { WhaleExternalState, WhaleScene } from './whale-scene.ts'
+export type { WhaleExternalState, WhaleScene } from './whale/scene.ts'
 
 /** Required services: slot registry plus the sessions bridge. */
 export const inject = ['slots', 'sessions']
 
-/** Ctrl/Cmd + Alt + W toggles the pet's visibility. */
-const HIDE_SHORTCUT = (event: KeyboardEvent): void => {
-  if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === 'w') {
-    event.preventDefault()
-    event.stopPropagation()
-    whalePet.toggleHidden()
-  }
-}
-
-let whalePet: WhalePetService
-
 /** Mount the runtime service and register one additive shell-overlay entry. */
 export function apply(ctx: ClientContext): void {
-  whalePet = new WhalePetService(browserStorage())
+  const whalePet = new WhalePetService(browserStorage())
   const observer = new SessionWhaleObserver(ctx as unknown as WhaleSessionClientContext, whalePet)
   whalePet.bindObserver(observer)
 
   ctx.effect(() => {
+    /** Ctrl/Cmd + Alt + W toggles the pet's visibility. */
+    const hideShortcut = (event: KeyboardEvent): void => {
+      if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === 'w') {
+        event.preventDefault()
+        event.stopPropagation()
+        whalePet.toggleHidden()
+      }
+    }
+
     const disposeService = ctx.provide('whalePet', whalePet)
     const disposeSlot = ctx.slots.inject('shell.overlay', () => ctx.slots.register({
       name: 'shell.overlay',
@@ -48,10 +46,10 @@ export function apply(ctx: ClientContext): void {
     // Headless (node) tests run apply without a window; the shortcut is
     // browser-only.
     const hasWindow = typeof window !== 'undefined'
-    if (hasWindow) window.addEventListener('keydown', HIDE_SHORTCUT)
+    if (hasWindow) window.addEventListener('keydown', hideShortcut)
 
     return () => {
-      if (hasWindow) window.removeEventListener('keydown', HIDE_SHORTCUT)
+      if (hasWindow) window.removeEventListener('keydown', hideShortcut)
       disposeSlot()
       observer.dispose()
       disposeService()

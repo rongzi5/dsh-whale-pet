@@ -120,9 +120,14 @@ corepack pnpm dsh web
 - `src/client/motion.ts` — 纯帧率无关的屏幕运动，包含庆祝绕圈路径和角落吸附。
 - `src/client/persistence.ts` — 带防护的 `localStorage` 状态（名字、位置、隐藏、吸附偏好、首次见面日期）。
 - `src/client/runtime/scheduler.ts` — 唯一的 `requestAnimationFrame` 时钟。
-- `src/client/runtime/whale-pet-controller.ts` — 拥有 Three.js 场景、DOM 监听和逐帧渲染。
+- `src/client/runtime/whale-pet-controller.ts` — 拥有 DOM 监听、调度器和逐帧渲染；组合 `src/client/whale` 中的 Three.js 场景。
 - `src/client/runtime/whale-pet-service.ts` — 可观察运行时服务（`ctx.whalePet`），管理情绪、瞬时特效、回顾历史和持久化状态。
-- `src/client/runtime/session-observer.ts` — 轮询当前会话并映射为情绪/特效和用户输入状态。
+- `src/client/runtime/session-observer.ts` — 订阅当前会话快照（带低频轮询兜底）并映射为情绪/特效和用户输入状态。
+- `src/client/whale/config.ts` — 共享几何/动画常量与 SVG 轮廓。
+- `src/client/whale/geometry.ts` — 纯 SVG/轮廓工具与 BufferGeometry 构建器。
+- `src/client/whale/materials.ts` — 材质工厂，包括蓝白身体遮罩 shader。
+- `src/client/whale/animation.ts` — 逐帧姿态动画（游动、尾鳍、胸鳍、眼睛、漂浮、错误/睡眠反应）。
+- `src/client/whale/scene.ts` — `createWhaleScene` 工厂，组合 config、geometry、materials 和 animation 为 `WhaleScene` 句柄。
 - `src/client/WhalePet.tsx` — 通过 `useSyncExternalStore` 消费服务快照的薄视图；持有输入检测的 DOM 焦点监听和右键菜单。
 
 ## 模型来源与致谢

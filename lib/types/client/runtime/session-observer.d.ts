@@ -67,6 +67,7 @@ export declare class SessionWhaleObserver {
     private readonly ctx;
     private readonly service;
     private listDispose;
+    private sessionDispose;
     private timer;
     private sessions;
     private sessionId;
@@ -77,7 +78,6 @@ export declare class SessionWhaleObserver {
     private turnStartedAt;
     private lastActivityAt;
     private lastErrorSeq;
-    private lastAgentError;
     private knownGoalPhase;
     private knownPlanActive;
     private transient;

@@ -129,9 +129,14 @@ Open `http://127.0.0.1:3080` after the process starts. The Host composition is l
 - `src/client/motion.ts` — pure frame-rate-independent screen-space motion, including the celebration loop path and corner snapping.
 - `src/client/persistence.ts` — guarded `localStorage` state (name, position, hidden, snap preference, first-run date).
 - `src/client/runtime/scheduler.ts` — the single `requestAnimationFrame` clock.
-- `src/client/runtime/whale-pet-controller.ts` — owns the Three.js scene, DOM listeners, and per-frame rendering.
+- `src/client/runtime/whale-pet-controller.ts` — owns the DOM listeners, scheduler, and per-frame rendering; composes the Three.js scene from `src/client/whale`.
 - `src/client/runtime/whale-pet-service.ts` — observable runtime service (`ctx.whalePet`) with activity, transient effects, recap history and persisted state.
-- `src/client/runtime/session-observer.ts` — polls the current session and maps session state to moods/effects and user typing.
+- `src/client/runtime/session-observer.ts` — subscribes to the current session snapshot (with a low-frequency polling fallback) and maps session state to moods/effects and user typing.
+- `src/client/whale/config.ts` — shared geometry/animation constants and SVG contours.
+- `src/client/whale/geometry.ts` — pure SVG/contour helpers and BufferGeometry builders.
+- `src/client/whale/materials.ts` — material factories, including the blue/white body-mask shader.
+- `src/client/whale/animation.ts` — frame pose animation (swim, tail, fins, eyes, float, error/sleep reactions).
+- `src/client/whale/scene.ts` — `createWhaleScene` factory composing config, geometry, materials and animation into a `WhaleScene` handle.
 - `src/client/WhalePet.tsx` — thin view consuming the service snapshot through `useSyncExternalStore`; owns the DOM focus listeners for typing detection and the context menu.
 
 ## Model source and acknowledgements

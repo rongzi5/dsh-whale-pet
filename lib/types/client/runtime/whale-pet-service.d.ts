@@ -5,7 +5,7 @@
  * other future plugins drive the same service through {@link setActivity},
  * {@link playEffect} and {@link pushRecap}.
  */
-import { type WhaleActivity, type WhaleBridgeState, type WhaleEffectKind, type WhalePetViewSnapshot, type WhaleToolReaction } from '../activity.ts';
+import { type WhaleActivity, type WhaleBridgeState, type WhaleEffectKind, type WhalePetViewSnapshot } from '../activity.ts';
 import { type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts';
 import type { SessionWhaleObserver } from './session-observer.ts';
 import { type StorageLike } from '../persistence.ts';
@@ -18,8 +18,6 @@ export declare class WhalePetService {
     private activity;
     private effects;
     private bridge;
-    private currentTool;
-    private toolReaction;
     private recapHistory;
     private recapIndex;
     private recapCurrent;
@@ -48,8 +46,6 @@ export declare class WhalePetService {
     setActivity(activity: WhaleActivity): void;
     /** Update the session-bridge lifecycle state (observer-owned). */
     setBridgeState(bridge: WhaleBridgeState): void;
-    /** Surface the currently running tool (observer-owned): name + animation personality. */
-    setCurrentTool(tool: string | null, reaction: WhaleToolReaction): void;
     /** Rename the pet; persists and publishes the new name. */
     setName(name: string): void;
     /** Hide or show the pet; persists the choice and pauses rendering while hidden. */

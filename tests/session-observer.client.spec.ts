@@ -383,32 +383,4 @@ describe('SessionWhaleObserver', () => {
     observer.dispose()
     service.dispose()
   })
-
-  it('surfaces the running tool name and clears it when done', () => {
-    const { conversation, observer, service } = setup()
-    observer.start()
-
-    conversation.set({
-      running: true,
-      partial: null,
-      runningCalls: [{ name: 'web-search', argsRaw: '{"query":"x"}' }],
-      nodes: [],
-      lastAgentError: null,
-    })
-    vi.advanceTimersByTime(200)
-    expect(service.getSnapshot().currentTool).toBe('web-search')
-
-    conversation.set({
-      running: true,
-      partial: null,
-      runningCalls: [],
-      nodes: [],
-      lastAgentError: null,
-    })
-    vi.advanceTimersByTime(200)
-    expect(service.getSnapshot().currentTool).toBeNull()
-
-    observer.dispose()
-    service.dispose()
-  })
 })

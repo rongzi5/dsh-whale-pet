@@ -37,9 +37,6 @@ DeepSeek Harness 3D 虎鲸桌宠的持久浏览器插件。
 | 会话状态 | 桌宠反应 |
 |---|---|
 | 正在产生 token 或运行工具 | `working`/`thinking`：游动加快、看向输入区、周期性吐泡泡 |
-| 运行 shell 类工具（`bash`、`pwsh` 等） | 执行命令时额外下潜、更专注 |
-| 运行搜索/网页类工具（`web`、`fs-search` 等） | 好奇地左右张望 |
-| 运行写文件类工具（`fs` 写/编辑、`fs-write` 等） | 开心，尾巴摇得更欢 |
 | 单轮持续超过 20s | `focused`：轻微下潜/专注姿态 |
 | 工具失败（非零退出码或错误节点） | `error`：汗滴 + 瞪眼，持续 8 秒 |
 | 长任务完成（≥15s）、goal 完成或退出 plan | `celebrating`：沿大椭圆 360° 绕圈，yaw 连续旋转并带近大远小深度，同时每 650ms 冒爱心 |
@@ -51,7 +48,6 @@ DeepSeek Harness 3D 虎鲸桌宠的持久浏览器插件。
 
 - `data-whale-activity` — 当前情绪（`idle`、`thinking`、`working`、`focused`、`celebrating`、`error`、`sleeping`、`listening`）
 - `data-whale-bridge` — 会话桥接状态（`off`、`waiting`、`bound`）
-- `data-whale-tool` — agent 正在运行的工具名（空闲时为空）
 
 ## 安装
 
@@ -120,13 +116,13 @@ corepack pnpm dsh web
 
 ## 架构
 
-- `src/client/activity.ts` — 纯情绪/特效词汇表、视图快照类型，以及按工具名分类的反应分类器。
+- `src/client/activity.ts` — 纯情绪/特效词汇表和视图快照类型。
 - `src/client/motion.ts` — 纯帧率无关的屏幕运动，包含庆祝绕圈路径和角落吸附。
 - `src/client/persistence.ts` — 带防护的 `localStorage` 状态（名字、位置、隐藏、吸附偏好、首次见面日期）。
 - `src/client/runtime/scheduler.ts` — 唯一的 `requestAnimationFrame` 时钟。
 - `src/client/runtime/whale-pet-controller.ts` — 拥有 Three.js 场景、DOM 监听和逐帧渲染。
 - `src/client/runtime/whale-pet-service.ts` — 可观察运行时服务（`ctx.whalePet`），管理情绪、瞬时特效、回顾历史和持久化状态。
-- `src/client/runtime/session-observer.ts` — 轮询当前会话并映射为情绪/特效、用户输入状态和工具反应。
+- `src/client/runtime/session-observer.ts` — 轮询当前会话并映射为情绪/特效和用户输入状态。
 - `src/client/WhalePet.tsx` — 通过 `useSyncExternalStore` 消费服务快照的薄视图；持有输入检测的 DOM 焦点监听和右键菜单。
 
 ## 模型来源与致谢

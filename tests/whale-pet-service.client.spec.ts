@@ -113,15 +113,4 @@ describe('WhalePetService', () => {
     expect(service.getSnapshot().name).toBe('鲸鲸')
     service.dispose()
   })
-
-  it('surfaces the running tool in the snapshot', () => {
-    const service = new WhalePetService()
-    expect(service.getSnapshot().currentTool).toBeNull()
-    service.setCurrentTool('bash', 'focus')
-    expect(service.getSnapshot().currentTool).toBe('bash')
-    service.setCurrentTool('bash', 'focus')
-    service.setCurrentTool(null, 'none')
-    expect(service.getSnapshot().currentTool).toBeNull()
-    service.dispose()
-  })
 })

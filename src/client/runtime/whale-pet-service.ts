@@ -6,7 +6,7 @@
  * {@link playEffect} and {@link pushRecap}.
  */
 
-import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleBridgeState, type WhaleEffect, type WhaleEffectKind, type WhalePetViewSnapshot, type WhaleRecap, type WhaleToolReaction } from '../activity.ts'
+import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleBridgeState, type WhaleEffect, type WhaleEffectKind, type WhalePetViewSnapshot, type WhaleRecap } from '../activity.ts'
 import { WhalePetController, type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts'
 import type { SessionWhaleObserver } from './session-observer.ts'
 import { daysSince, loadWhalePetState, saveWhalePetState, type StorageLike, type WhalePetPersistedState } from '../persistence.ts'
@@ -33,8 +33,6 @@ export class WhalePetService {
   private activity: WhaleActivity = IDLE_ACTIVITY
   private effects: readonly WhaleEffect[] = []
   private bridge: WhaleBridgeState = 'off'
-  private currentTool: string | null = null
-  private toolReaction: WhaleToolReaction = 'none'
   private recapHistory: readonly WhaleRecap[] = []
   private recapIndex = 0
   private recapCurrent: WhaleRecap | null = null
@@ -115,15 +113,6 @@ export class WhalePetService {
   public setBridgeState(bridge: WhaleBridgeState): void {
     if (this.bridge === bridge) return
     this.bridge = bridge
-    this.publish()
-  }
-
-  /** Surface the currently running tool (observer-owned): name + animation personality. */
-  public setCurrentTool(tool: string | null, reaction: WhaleToolReaction): void {
-    if (this.currentTool === tool && this.toolReaction === reaction) return
-    this.currentTool = tool
-    this.toolReaction = reaction
-    this.controller.setToolReaction(reaction)
     this.publish()
   }
 
@@ -296,8 +285,6 @@ export class WhalePetService {
     this.activity = IDLE_ACTIVITY
     this.bridge = 'off'
     this.recapCurrent = null
-    this.currentTool = null
-    this.toolReaction = 'none'
     this.observer = null
     this.snapshot = this.buildSnapshot()
   }
@@ -311,7 +298,6 @@ export class WhalePetService {
       hidden: this.persisted.hidden,
       snapToCorner: this.persisted.snapToCorner,
       recap: this.recapCurrent,
-      currentTool: this.currentTool,
     })
   }
 

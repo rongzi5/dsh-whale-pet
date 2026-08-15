@@ -25,7 +25,7 @@
  * throws loudly on an out-of-range access, so the strict
  * `noUncheckedIndexedAccess` build stays clean without non-null assertions.
  */
-import type { WhaleActivity, WhaleToolReaction } from './activity.ts';
+import type { WhaleActivity } from './activity.ts';
 declare module 'three' {
     interface Material {
         extensions: {
@@ -58,8 +58,6 @@ export interface WhaleExternalState {
     roll: number;
     /** Session-driven mood, supplied by the runtime service. */
     activity: WhaleActivity;
-    /** Animation personality of the currently running tool. */
-    toolReaction: WhaleToolReaction;
 }
 /** Handle returned by {@link createWhaleScene}; the parent drives everything. */
 export interface WhaleScene {

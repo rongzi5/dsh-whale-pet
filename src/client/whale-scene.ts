@@ -28,7 +28,7 @@
 
 import * as THREE from 'three'
 
-import type { WhaleActivity, WhaleToolReaction } from './activity.ts'
+import type { WhaleActivity } from './activity.ts'
 
 // @types/three@0.147 does not model Material.extensions although three r147
 // initializes it to `{}`; augment so the shader's derivatives flag type-checks.
@@ -69,8 +69,6 @@ export interface WhaleExternalState {
   roll: number
   /** Session-driven mood, supplied by the runtime service. */
   activity: WhaleActivity
-  /** Animation personality of the currently running tool. */
-  toolReaction: WhaleToolReaction
 }
 
 /** Handle returned by {@link createWhaleScene}; the parent drives everything. */
@@ -1100,17 +1098,10 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
     model.rotation.x = pitchSway - f.motionY * motionEnergy * 0.1 + motionWave2 * patrolEnergy * 0.04
     model.rotation.z = rollSway + motionWave * patrolEnergy * 0.035
 
-    // Tool personality: searches make the whale look around, shells add a
-    // focused dive, file writes give the tail a lively wag.
-    const toolReaction = external.toolReaction
-    const scanSway = toolReaction === 'scan' ? Math.sin(t * 2.6) * 0.13 : 0
-    const toolDive = toolReaction === 'focus' ? -0.03 : 0
-    const happyTail = toolReaction === 'happy' ? Math.sin(t * 10) * 0.07 : 0
-
     // pivot pose, bounce and squash/stretch; focused turns dive slightly.
     const divePitch = mood === 'focused' ? -0.08 * intensity : mood === 'sleeping' ? 0.02 : 0
-    petPivot.rotation.y = f.yaw + scanSway
-    petPivot.rotation.x = f.pitch - f.motionY * motionEnergy * 0.055 + divePitch + toolDive
+    petPivot.rotation.y = f.yaw
+    petPivot.rotation.x = f.pitch - f.motionY * motionEnergy * 0.055 + divePitch
     petPivot.rotation.z = f.roll + motionWave * motionEnergy * 0.02
     petPivot.position.y = motionBounce * patrolEnergy * 0.07 + motionWave * dragEnergy * 0.018
     petPivot.scale.set(
@@ -1124,7 +1115,7 @@ export function createWhaleScene(canvas: HTMLCanvasElement): WhaleScene {
     const tailAmpX = CFG.TAIL_PITCH_AMPLITUDE * (mood === 'sleeping' ? 0.4 : 1)
     const tailSwayY = Math.sin(swimPhase + 0.7) * tailAmpY
     const tailSwayX = Math.sin(swimPhase + 1.2) * tailAmpX
-    tailGroup.rotation.y = tailSwayY - f.motionX * motionEnergy * 0.28 + motionWave * patrolEnergy * 0.2 + motionWave * dragEnergy * 0.08 + happyTail
+    tailGroup.rotation.y = tailSwayY - f.motionX * motionEnergy * 0.28 + motionWave * patrolEnergy * 0.2 + motionWave * dragEnergy * 0.08
     tailGroup.rotation.x = tailSwayX - f.motionY * motionEnergy * 0.42 + motionWave2 * patrolEnergy * 0.25 + motionWave2 * dragEnergy * 0.12
     tailGroup.rotation.z = (CFG.TAIL_TILT_DEG * Math.PI) / 180
 

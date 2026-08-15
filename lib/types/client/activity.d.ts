@@ -43,18 +43,6 @@ export interface WhaleRecap {
     /** Stable key used to restart the bubble animation per entry. */
     text: string;
 }
-/**
- * Per-tool animation personality, derived from the running tool's name and
- * raw arguments. Consumed by the scene (head-sway, dive, livelier tail).
- */
-export type WhaleToolReaction = 'focus' | 'scan' | 'happy' | 'none';
-/**
- * Classify a running tool into an animation reaction. Named `fs-*` variants
- * carry the intent in their suffix (`fs-write` → happy, `fs-search` → scan);
- * the bare `fs` tool reads its raw JSON arguments (`"write"`/`"edit"` →
- * happy, reads/searches → scan). Other tools match on name hints.
- */
-export declare function classifyTool(name: string, argsRaw?: string): WhaleToolReaction;
 /** Stable view snapshot consumed through useSyncExternalStore. */
 export interface WhalePetViewSnapshot {
     activity: WhaleActivity;
@@ -68,8 +56,6 @@ export interface WhalePetViewSnapshot {
     snapToCorner: boolean;
     /** The recap bubble currently visible, or null. */
     recap: WhaleRecap | null;
-    /** Name of the tool the agent is currently running, or null. */
-    currentTool: string | null;
 }
 export declare const IDLE_ACTIVITY: WhaleActivity;
 /**

@@ -47,44 +47,6 @@ export interface WhaleRecap {
   text: string
 }
 
-/**
- * Per-tool animation personality, derived from the running tool's name and
- * raw arguments. Consumed by the scene (head-sway, dive, livelier tail).
- */
-export type WhaleToolReaction = 'focus' | 'scan' | 'happy' | 'none'
-
-const FOCUS_TOOL_HINTS = ['bash', 'shell', 'pwsh', 'sh', 'exec']
-const SCAN_TOOL_HINTS = ['search', 'web', 'fetch', 'http']
-const HAPPY_TOOL_HINTS = ['write', 'edit', 'patch', 'create', 'save', 'rename', 'remove', 'mkdir']
-/** fs arguments that indicate read-style work. */
-const FS_SCAN_ARG_HINTS = ['read', 'search', 'list', 'glob', 'grep', 'find']
-
-/**
- * Classify a running tool into an animation reaction. Named `fs-*` variants
- * carry the intent in their suffix (`fs-write` → happy, `fs-search` → scan);
- * the bare `fs` tool reads its raw JSON arguments (`"write"`/`"edit"` →
- * happy, reads/searches → scan). Other tools match on name hints.
- */
-export function classifyTool(name: string, argsRaw?: string): WhaleToolReaction {
-  const n = name.toLowerCase()
-  const args = (argsRaw ?? '').toLowerCase()
-  if (n === 'fs') {
-    if (HAPPY_TOOL_HINTS.some(hint => args.includes(hint))) return 'happy'
-    if (FS_SCAN_ARG_HINTS.some(hint => args.includes(hint))) return 'scan'
-    return 'none'
-  }
-  if (n.startsWith('fs-')) {
-    const action = n.slice(3)
-    if (HAPPY_TOOL_HINTS.includes(action)) return 'happy'
-    if (action === 'read' || action === 'search') return 'scan'
-    return 'none'
-  }
-  if (FOCUS_TOOL_HINTS.some(hint => n.includes(hint))) return 'focus'
-  if (SCAN_TOOL_HINTS.some(hint => n.includes(hint))) return 'scan'
-  if (HAPPY_TOOL_HINTS.some(hint => n.includes(hint))) return 'happy'
-  return 'none'
-}
-
 /** Stable view snapshot consumed through useSyncExternalStore. */
 export interface WhalePetViewSnapshot {
   activity: WhaleActivity
@@ -98,8 +60,6 @@ export interface WhalePetViewSnapshot {
   snapToCorner: boolean
   /** The recap bubble currently visible, or null. */
   recap: WhaleRecap | null
-  /** Name of the tool the agent is currently running, or null. */
-  currentTool: string | null
 }
 
 export const IDLE_ACTIVITY: WhaleActivity = Object.freeze({ mood: 'idle', intensity: 0 })

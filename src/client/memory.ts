@@ -11,6 +11,7 @@
 
 import type { StorageLike } from './persistence.ts'
 import type { WhaleChatMessage } from './llm.ts'
+import { buildProgressContext, type WhaleSessionProgress } from './progress.ts'
 
 export interface WhaleMemory {
   /** Long-term facts about the user, newest last. */
@@ -109,17 +110,23 @@ export function appendTurn(memory: WhaleMemory, role: 'user' | 'assistant', text
 /**
  * The pet persona + memory block handed to the model as the system prompt.
  * Instructs the model to report memorable facts with the `[记住]` protocol.
+ * When the agent is busy, a live progress block is appended so the pet can
+ * truthfully answer "进度如何了" (the block is read-only session state; the
+ * DSH conversation itself is never touched).
  */
-export function buildSystemPrompt(memory: WhaleMemory, meta: { name: string; days: number }): string {
-  const facts = memory.facts.length > 0
-    ? memory.facts.map(fact => `- ${fact}`).join('\n')
-    : '（还没有关于用户的记忆）'
-  return [
+export function buildSystemPrompt(
+  memory: WhaleMemory,
+  meta: { name: string; days: number },
+  progress: WhaleSessionProgress | null = null,
+): string {
+  const base = [
     `你是运行在 DeepSeek Harness 界面角落的 3D 虎鲸桌宠「${meta.name}」，已经陪伴用户 ${meta.days} 天。`,
     '你性格温柔俏皮，回复简短可爱，不超过 60 字，不使用 markdown。',
-    `关于用户的记忆：\n${facts}`,
+    `关于用户的记忆：\n${memory.facts.length > 0 ? memory.facts.map(fact => `- ${fact}`).join('\n') : '（还没有关于用户的记忆）'}`,
     '如果用户告诉了你值得长期记住的事实（名字、喜好、习惯、安排等），在你的回复末尾单独一行输出「[记住] 事实内容」。',
-  ].join('\n')
+  ]
+  const progressBlock = buildProgressContext(progress)
+  return progressBlock === null ? base.join('\n') : [...base, progressBlock].join('\n\n')
 }
 
 /** Extract `[记住] <fact>` lines from a model reply. */
@@ -144,8 +151,9 @@ export function buildChatMessages(
   memory: WhaleMemory,
   meta: { name: string; days: number },
   input: string,
+  progress: WhaleSessionProgress | null = null,
 ): WhaleChatMessage[] {
-  const messages: WhaleChatMessage[] = [{ role: 'system', content: buildSystemPrompt(memory, meta) }]
+  const messages: WhaleChatMessage[] = [{ role: 'system', content: buildSystemPrompt(memory, meta, progress) }]
   for (const turn of memory.turns) {
     messages.push({ role: turn.role, content: turn.text })
   }

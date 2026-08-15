@@ -416,4 +416,46 @@ describe('SessionWhaleObserver', () => {
     observer.dispose()
     service.dispose()
   })
+
+  it('exposes a read-only progress snapshot of the bound session', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+    vi.advanceTimersByTime(3_000)
+
+    // Bound but empty session: an inactive snapshot, not null.
+    expect(observer.getProgress()).toMatchObject({ active: false, running: false, nodeCount: 0 })
+
+    conversation.set({
+      running: true,
+      partial: { blocks: [1] },
+      runningCalls: [{ name: 'bash' }, { name: 'web_search' }],
+      nodes: [{ kind: 'tool-result', seq: 1, call: { name: 'bash' } }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(60_000)
+
+    const progress = observer.getProgress()
+    expect(progress).toMatchObject({
+      active: true,
+      running: true,
+      tools: ['bash', 'web_search'],
+      nodeCount: 1,
+      lastTool: 'bash',
+    })
+    expect(progress?.turnMs).toBeGreaterThanOrEqual(60_000)
+
+    // Idle session: still reported as a snapshot, but not active.
+    conversation.set({
+      running: false,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'tool-result', seq: 1, call: { name: 'bash' } }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(observer.getProgress()).toMatchObject({ active: false, running: false })
+
+    observer.dispose()
+    service.dispose()
+  })
 })

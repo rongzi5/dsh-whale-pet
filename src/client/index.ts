@@ -23,9 +23,9 @@ export const inject = ['slots', 'sessions']
 /** Mount the runtime service and register one additive shell-overlay entry. */
 export function apply(ctx: ClientContext): void {
   const whalePet = new WhalePetService(browserStorage())
-  const whalePetChat = new WhalePetChat(whalePet, browserStorage())
   const observer = new SessionWhaleObserver(ctx as unknown as WhaleSessionClientContext, whalePet)
   whalePet.bindObserver(observer)
+  const whalePetChat = new WhalePetChat(whalePet, browserStorage(), undefined, () => observer.getProgress())
 
   ctx.effect(() => {
     /** Ctrl/Cmd + Alt + W toggles the pet's visibility. */

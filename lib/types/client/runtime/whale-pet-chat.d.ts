@@ -13,6 +13,7 @@
  */
 import { WhalePetService } from './whale-pet-service.ts';
 import { type WhaleChatOptions, type WhaleChatTransport, type WhaleModelCatalog } from '../llm.ts';
+import { type WhaleSessionProgress } from '../progress.ts';
 import { type StorageLike } from '../persistence.ts';
 /** Persisted chat preferences (model + reasoning effort). */
 export interface WhaleChatPreferences {
@@ -30,10 +31,17 @@ export declare class WhalePetChat {
     private readonly service;
     private readonly storage;
     private readonly transport;
+    private readonly progressProvider;
     private busy;
-    constructor(service: WhalePetService, storage?: StorageLike | null, transport?: WhaleChatTransport);
+    constructor(service: WhalePetService, storage?: StorageLike | null, transport?: WhaleChatTransport, progressProvider?: (() => WhaleSessionProgress | null) | null);
     /** Whether a chat request is currently in flight (guards re-entry). */
     get isBusy(): boolean;
+    /**
+     * One-line live progress bubble ("正在跑 bash，已经 3 分钟"), or null when
+     * the agent is idle. Used by the click recap so a long-running task can be
+     * checked without typing.
+     */
+    getProgressText(): string | null;
     /** The persisted model/effort preferences, or null. */
     getPreferences(): WhaleChatPreferences | null;
     /** Persist model/effort preferences for future chats. */

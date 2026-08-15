@@ -10,6 +10,7 @@
  */
 import type { StorageLike } from './persistence.ts';
 import type { WhaleChatMessage } from './llm.ts';
+import { type WhaleSessionProgress } from './progress.ts';
 export interface WhaleMemory {
     /** Long-term facts about the user, newest last. */
     facts: string[];
@@ -36,11 +37,14 @@ export declare function appendTurn(memory: WhaleMemory, role: 'user' | 'assistan
 /**
  * The pet persona + memory block handed to the model as the system prompt.
  * Instructs the model to report memorable facts with the `[记住]` protocol.
+ * When the agent is busy, a live progress block is appended so the pet can
+ * truthfully answer "进度如何了" (the block is read-only session state; the
+ * DSH conversation itself is never touched).
  */
 export declare function buildSystemPrompt(memory: WhaleMemory, meta: {
     name: string;
     days: number;
-}): string;
+}, progress?: WhaleSessionProgress | null): string;
 /** Extract `[记住] <fact>` lines from a model reply. */
 export declare function extractFacts(reply: string): string[];
 /** Strip `[记住] ...` marker lines so they never show in the bubble. */
@@ -49,4 +53,4 @@ export declare function stripMemoryMarkers(reply: string): string;
 export declare function buildChatMessages(memory: WhaleMemory, meta: {
     name: string;
     days: number;
-}, input: string): WhaleChatMessage[];
+}, input: string, progress?: WhaleSessionProgress | null): WhaleChatMessage[];

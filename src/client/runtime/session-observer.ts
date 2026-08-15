@@ -9,6 +9,7 @@
  */
 
 import type { WhaleActivity, WhaleEffectKind } from '../activity.ts'
+import type { WhaleSessionProgress } from '../progress.ts'
 import { WhalePetService } from './whale-pet-service.ts'
 
 const POLL_MS = 200
@@ -259,6 +260,45 @@ export class SessionWhaleObserver {
   /** Record direct user interaction so sleep can be interrupted. */
   public noteUserActivity(): void {
     this.lastActivityAt = Date.now()
+  }
+
+  /**
+   * A read-only progress snapshot of the bound session, for the pet's chat
+   * and click recap. Returns null when no session is bound. Never writes to
+   * the session.
+   */
+  public getProgress(): WhaleSessionProgress | null {
+    if (this.sessions === null || this.session === null || this.sessionId === undefined) return null
+    let current: string | undefined
+    try {
+      current = this.sessions.list.getSnapshot().current
+    } catch {
+      return null
+    }
+    if (current !== this.sessionId) return null
+    let snapshot: ConversationLike
+    try {
+      snapshot = this.session.getSnapshot()
+    } catch {
+      return null
+    }
+    const hasPartial = snapshot.partial !== null && snapshot.partial.blocks.length > 0
+    const active = snapshot.running || hasPartial || snapshot.runningCalls.length > 0
+    const tools = snapshot.runningCalls
+      .map(call => (typeof (call as { name?: unknown }).name === 'string' ? (call as { name: string }).name : 'tool'))
+      .slice(0, 5)
+    const lastNode = snapshot.nodes[snapshot.nodes.length - 1]
+    const lastTool = lastNode?.call?.name
+    return {
+      active,
+      running: snapshot.running,
+      tools,
+      turnMs: snapshot.running ? Math.max(0, Date.now() - this.turnStartedAt) : 0,
+      nodeCount: snapshot.nodes.length,
+      ...(lastTool !== undefined ? { lastTool } : {}),
+      ...(this.knownGoalPhase !== undefined ? { goalPhase: this.knownGoalPhase } : {}),
+      ...(this.knownPlanActive !== undefined ? { planActive: this.knownPlanActive } : {}),
+    }
   }
 
   /**

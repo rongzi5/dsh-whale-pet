@@ -220,7 +220,13 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const click = (event: ReactMouseEvent<HTMLElement>): void => {
     event.stopPropagation()
     if (Date.now() - lastContextMenuAt.current < CLICK_AFTER_CONTEXT_MENU_MS) return
-    if (whalePet.wasClick() === true) whalePet.nextRecap()
+    if (whalePet.wasClick() === true) {
+      // While the agent is busy, a click reports live progress ("正在跑
+      // bash，已经 3 分钟") instead of cycling the recap history.
+      const progressText = whalePetChat?.getProgressText() ?? null
+      if (progressText !== null) whalePet.showBubble(progressText, 6_000)
+      else whalePet.nextRecap()
+    }
   }
 
   const openMenu = (event: ReactMouseEvent<HTMLElement>): void => {

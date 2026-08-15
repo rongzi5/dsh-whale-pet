@@ -35,6 +35,19 @@ describe('buildSystemPrompt', () => {
   it('falls back to an empty-memory notice', () => {
     expect(buildSystemPrompt({ facts: [], turns: [] }, META)).toContain('还没有关于用户的记忆')
   })
+
+  it('appends the live progress block only while the agent is busy', () => {
+    const base = buildSystemPrompt({ facts: [], turns: [] }, META)
+    expect(base).not.toContain('当前 DSH 会话状态')
+    const busy = buildSystemPrompt(
+      { facts: [], turns: [] },
+      META,
+      { active: true, running: true, tools: ['bash'], turnMs: 120_000, nodeCount: 5 },
+    )
+    expect(busy).toContain('当前 DSH 会话状态')
+    expect(busy).toContain('bash')
+    expect(busy).toContain('2 分钟')
+  })
 })
 
 describe('extractFacts / stripMemoryMarkers', () => {

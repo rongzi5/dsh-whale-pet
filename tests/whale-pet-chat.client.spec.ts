@@ -160,6 +160,43 @@ describe('WhalePetChat', () => {
     service.dispose()
   })
 
+  it('feeds the live session progress into the system prompt and click recap', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    let receivedMessages: readonly WhaleChatMessage[] | null = null
+    const transport: WhaleChatTransport = {
+      async postChat(messages): Promise<string> {
+        receivedMessages = messages
+        return '在跑 bash 呢'
+      },
+      async listModels(): Promise<WhaleModelCatalog> {
+        return FAKE_CATALOG
+      },
+    }
+    const progressProvider = () => ({
+      active: true,
+      running: true,
+      tools: ['bash'],
+      turnMs: 150_000,
+      nodeCount: 8,
+      lastTool: 'bash',
+      goalPhase: 'active',
+    })
+    const chat = new WhalePetChat(service, storage, transport, progressProvider)
+
+    // Click recap reports the live progress line without any LLM call.
+    expect(chat.getProgressText()).toBe('正在跑 bash，已经 3 分钟')
+
+    // The chat request carries the progress block in the system prompt.
+    await chat.ask('进度如何了')
+    const system = receivedMessages?.[0]?.content ?? ''
+    expect(system).toContain('当前 DSH 会话状态')
+    expect(system).toContain('正在运行：bash')
+    expect(system).toContain('8 个节点')
+    expect(system).toContain('goal 阶段：active')
+    service.dispose()
+  })
+
   it('round-trips chat preferences through storage', () => {
     const storage = new FakeStorage()
     expect(loadChatPreferences(storage)).toBeNull()

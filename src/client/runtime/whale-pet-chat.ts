@@ -23,6 +23,7 @@ import {
   stripMemoryMarkers,
 } from '../memory.ts'
 import { localChatTransport, type WhaleChatOptions, type WhaleChatTransport, type WhaleModelCatalog } from '../llm.ts'
+import { progressToText, type WhaleSessionProgress } from '../progress.ts'
 import { daysSince, loadWhalePetState, type StorageLike } from '../persistence.ts'
 
 const THINKING_MS = 30_000
@@ -85,11 +86,22 @@ export class WhalePetChat {
     private readonly service: WhalePetService,
     private readonly storage: StorageLike | null = null,
     private readonly transport: WhaleChatTransport = localChatTransport,
+    private readonly progressProvider: (() => WhaleSessionProgress | null) | null = null,
   ) {}
 
   /** Whether a chat request is currently in flight (guards re-entry). */
   public get isBusy(): boolean {
     return this.busy
+  }
+
+  /**
+   * One-line live progress bubble ("正在跑 bash，已经 3 分钟"), or null when
+   * the agent is idle. Used by the click recap so a long-running task can be
+   * checked without typing.
+   */
+  public getProgressText(): string | null {
+    if (this.progressProvider === null) return null
+    return progressToText(this.progressProvider())
   }
 
   /** The persisted model/effort preferences, or null. */
@@ -122,7 +134,8 @@ export class WhalePetChat {
     try {
       const memory = loadWhaleMemory(this.storage)
       const meta = this.meta()
-      const reply = await this.transport.postChat(buildChatMessages(memory, meta, text), options)
+      const progress = this.progressProvider !== null ? this.progressProvider() : null
+      const reply = await this.transport.postChat(buildChatMessages(memory, meta, text, progress), options)
       const cleanReply = stripMemoryMarkers(reply)
       const next = rememberFacts(memory, extractFacts(reply))
       const persisted = appendTurn(appendTurn(next, 'user', text), 'assistant', cleanReply)

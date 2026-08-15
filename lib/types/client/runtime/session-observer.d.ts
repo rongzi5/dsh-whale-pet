@@ -8,6 +8,7 @@
  * the derivation logic can be unit-tested with plain fixtures.
  */
 import type { WhaleActivity, WhaleEffectKind } from '../activity.ts';
+import type { WhaleSessionProgress } from '../progress.ts';
 import { WhalePetService } from './whale-pet-service.ts';
 export interface ObservableLike<T> {
     getSnapshot(): T;
@@ -97,6 +98,12 @@ export declare class SessionWhaleObserver {
     dispose(): void;
     /** Record direct user interaction so sleep can be interrupted. */
     noteUserActivity(): void;
+    /**
+     * A read-only progress snapshot of the bound session, for the pet's chat
+     * and click recap. Returns null when no session is bound. Never writes to
+     * the session.
+     */
+    getProgress(): WhaleSessionProgress | null;
     /**
      * Track whether the user is composing a reply. Driven by DOM focus events
      * on the chat input from the view; while typing, the pet stays in the

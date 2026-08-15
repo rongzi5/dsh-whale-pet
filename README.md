@@ -71,6 +71,16 @@ While a request is in flight the pet holds the `thinking` mood (an external
 override the session observer respects) and reacts with an error mood and sweat
 drops if the proxy is unreachable or unconfigured (no key → HTTP 503).
 
+### Session progress (read-only)
+
+The pet can answer "进度如何了": every chat request appends a compact
+**read-only progress snapshot** (running tools, turn duration, committed node
+count, goal/plan phase) to the pet's own system prompt, so it truthfully
+reports long-task progress. The snapshot only reads the session projection —
+it **never writes to the DSH conversation**, so long chats are not disturbed.
+While the agent is busy, a plain **click on the pet** bubbles
+"正在跑 bash，已经 3 分钟" without typing.
+
 Debug: `GET /api/whale-pet/health` reports `{ ok, configured }`.
 
 ## Session integration
@@ -127,7 +137,7 @@ The repository builds standalone (no pnpm workspace, no dsh checkout):
 ```sh
 npm install            # dev toolchain: typescript, esbuild, vitest, three…
 npm run build          # tsc declarations + esbuild host/client bundles → lib/
-npm test               # vitest suite (99 tests)
+npm test               # vitest suite (108 tests)
 node install-profile.mjs web
 ```
 

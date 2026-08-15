@@ -58,6 +58,14 @@ OpenAI 兼容上游地址）与 `DSH_WHALE_API_MODEL`（默认 `deepseek-chat`�
 请求在途时鲸鲸保持 `thinking` 情绪（外部覆盖，会话观察器会尊重它）；代理不可达或未
 配置（无 Key → HTTP 503）时表现为 error 情绪 + 冒汗。
 
+### 会话进度（只读）
+
+鲸鲸能回答"进度如何了"：每次桌宠聊天时，会把一份精简的**只读进度快照**
+（当前运行的工具、回合时长、已提交节点数、goal/plan 阶段）附进桌宠自己的系统
+提示，让它如实回答长任务的进度。这份快照只读会话投影，**绝不写入 DSH 会话**，
+不影响长对话的上下文。另外，agent 忙碌时**单击鲸鲸**会直接弹出
+"正在跑 bash，已经 3 分钟"这类进度气泡，无需打字。
+
 调试：`GET /api/whale-pet/health` 返回 `{ ok, configured }`。
 
 ## 会话联动
@@ -109,7 +117,7 @@ OpenAI 兼容上游地址）与 `DSH_WHALE_API_MODEL`（默认 `deepseek-chat`�
 ```sh
 npm install            # 开发工具链：typescript、esbuild、vitest、three 等
 npm run build          # tsc 声明 + esbuild host/client 产物 → lib/
-npm test               # vitest 套件（99 个用例）
+npm test               # vitest 套件（108 个用例）
 node install-profile.mjs web
 ```
 

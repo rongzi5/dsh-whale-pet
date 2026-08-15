@@ -104,6 +104,35 @@ export class WhalePetChat {
     return progressToText(this.progressProvider())
   }
 
+  /**
+   * Probe the fine-grained progress (host event log + jobs registry) and
+   * refresh the bubble with the more concrete result. Fired after a click so
+   * the bubble upgrades from the coarse line to the probed one (e.g. a
+   * running background job) when available.
+   */
+  public async refreshProgressBubble(): Promise<void> {
+    const progress = await this.probeProgress()
+    const text = progressToText(progress)
+    if (text !== null) this.service.showBubble(text, 6_000)
+  }
+
+  /**
+   * Coarse projection snapshot upgraded with the fine-grained host probe
+   * (event log + jobs registry); degrades to the coarse snapshot on failure.
+   */
+  private async probeProgress(): Promise<WhaleSessionProgress | null> {
+    const coarse = this.progressProvider !== null ? this.progressProvider() : null
+    if (coarse === null) return null
+    if (coarse.sessionId !== undefined && this.transport.getProgress !== undefined) {
+      try {
+        return { ...coarse, ...(await this.transport.getProgress(coarse.sessionId)) }
+      } catch {
+        return coarse
+      }
+    }
+    return coarse
+  }
+
   /** The persisted model/effort preferences, or null. */
   public getPreferences(): WhaleChatPreferences | null {
     return loadChatPreferences(this.storage)
@@ -134,19 +163,9 @@ export class WhalePetChat {
     try {
       const memory = loadWhaleMemory(this.storage)
       const meta = this.meta()
-      const coarse = this.progressProvider !== null ? this.progressProvider() : null
-      // Best-effort fine-grained progress from the host event log; the coarse
-      // projection snapshot is the fallback (and the only option for id-less
-      // progress sources).
-      let progress = coarse
-      if (coarse !== null && coarse.sessionId !== undefined && this.transport.getProgress !== undefined) {
-        try {
-          const fine = await this.transport.getProgress(coarse.sessionId)
-          progress = { ...coarse, ...fine }
-        } catch {
-          progress = coarse
-        }
-      }
+      // Probe the fine-grained progress (host event log + jobs registry);
+      // the coarse projection snapshot is the fallback.
+      const progress = await this.probeProgress()
       const reply = await this.transport.postChat(buildChatMessages(memory, meta, text, progress), options)
       const cleanReply = stripMemoryMarkers(reply)
       const next = rememberFacts(memory, extractFacts(reply))

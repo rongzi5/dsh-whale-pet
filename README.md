@@ -152,7 +152,7 @@ The repository builds standalone (no pnpm workspace, no dsh checkout):
 ```sh
 npm install            # dev toolchain: typescript, esbuild, vitest, three…
 npm run build          # tsc declarations + esbuild host/client bundles → lib/
-npm test               # vitest suite (125 tests)
+npm test               # vitest suite (126 tests)
 node install-profile.mjs web
 ```
 

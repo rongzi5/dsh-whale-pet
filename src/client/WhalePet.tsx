@@ -222,10 +222,16 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     if (Date.now() - lastContextMenuAt.current < CLICK_AFTER_CONTEXT_MENU_MS) return
     if (whalePet.wasClick() === true) {
       // While the agent is busy, a click reports live progress ("正在跑
-      // bash，已经 3 分钟") instead of cycling the recap history.
+      // bash，已经 3 分钟") instead of cycling the recap history. The coarse
+      // line shows instantly, then the fine-grained probe (event log + jobs
+      // registry) upgrades the bubble when it differs.
       const progressText = whalePetChat?.getProgressText() ?? null
-      if (progressText !== null) whalePet.showBubble(progressText, 6_000)
-      else whalePet.nextRecap()
+      if (progressText !== null) {
+        whalePet.showBubble(progressText, 6_000)
+        void whalePetChat?.refreshProgressBubble()
+      } else {
+        whalePet.nextRecap()
+      }
     }
   }
 

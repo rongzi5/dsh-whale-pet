@@ -42,6 +42,18 @@ export declare class WhalePetChat {
      * checked without typing.
      */
     getProgressText(): string | null;
+    /**
+     * Probe the fine-grained progress (host event log + jobs registry) and
+     * refresh the bubble with the more concrete result. Fired after a click so
+     * the bubble upgrades from the coarse line to the probed one (e.g. a
+     * running background job) when available.
+     */
+    refreshProgressBubble(): Promise<void>;
+    /**
+     * Coarse projection snapshot upgraded with the fine-grained host probe
+     * (event log + jobs registry); degrades to the coarse snapshot on failure.
+     */
+    private probeProgress;
     /** The persisted model/effort preferences, or null. */
     getPreferences(): WhaleChatPreferences | null;
     /** Persist model/effort preferences for future chats. */

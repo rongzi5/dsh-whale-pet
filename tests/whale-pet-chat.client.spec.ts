@@ -132,6 +132,7 @@ describe('WhalePetChat', () => {
 
     const first = chat.ask('第一句')
     const second = chat.ask('第二句')
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
     expect(calls).toBe(1)
     expect(service.getSnapshot().recap?.text).toBe('等我先把这句说完～')
     release?.()
@@ -245,6 +246,46 @@ describe('WhalePetChat', () => {
     const system = receivedMessages?.[0]?.content ?? ''
     expect(system).toContain('正在运行：bash')
     expect(system).not.toContain('最新动态')
+    service.dispose()
+  })
+
+  it('upgrades the click bubble with the probed fine progress', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const transport: WhaleChatTransport = {
+      async postChat(): Promise<string> {
+        return 'ok'
+      },
+      async listModels(): Promise<WhaleModelCatalog> {
+        return FAKE_CATALOG
+      },
+      async getProgress(): Promise<WhaleSessionProgress> {
+        return {
+          active: true,
+          running: true,
+          tools: ['jobs'],
+          turnMs: 210_000,
+          nodeCount: 12,
+          step: 2,
+          jobs: [{ label: 'npm run build', startedAt: Date.now() - 300_000, outputTail: '进度 45%' }],
+        }
+      },
+    }
+    const progressProvider = () => ({
+      sessionId: 'session-1',
+      active: true,
+      running: true,
+      tools: ['jobs'],
+      turnMs: 210_000,
+      nodeCount: 12,
+    })
+    const chat = new WhalePetChat(service, storage, transport, progressProvider)
+
+    // Coarse line first…
+    expect(chat.getProgressText()).toBe('正在忙活（jobs），已经 4 分钟')
+    // …then the probe upgrades the bubble to the running job.
+    await chat.refreshProgressBubble()
+    expect(service.getSnapshot().recap?.text).toBe('正在后台跑 npm run build（已 5 分钟）')
     service.dispose()
   })
 

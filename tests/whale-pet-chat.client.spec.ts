@@ -324,7 +324,7 @@ describe('WhalePetService external mood', () => {
     const service = new WhalePetService(new FakeStorage())
     service.pushRecap('历史事件')
     service.showBubble('这是一条很长的回复'.repeat(40), 1_000)
-    expect(service.getSnapshot().recap?.text.length).toBeLessThanOrEqual(220)
+    expect(service.getSnapshot().recap?.text.length).toBeLessThanOrEqual(600)
 
     // The click recap cycle still only sees session events + the name entry.
     service.nextRecap()

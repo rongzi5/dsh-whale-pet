@@ -25,6 +25,9 @@ const ERROR_SWEAT_INTERVAL_MS = 1_400
 
 /** How long one recap bubble stays visible after a click. */
 const RECAP_TTL_MS = 3_200
+/** Cap for one bubble's text: long enough for task summaries, short enough
+ * to stay readable as an overlay. */
+const BUBBLE_TEXT_LIMIT = 600
 /** How many session events the click recap keeps around. */
 const RECAP_HISTORY_LIMIT = 8
 
@@ -181,7 +184,7 @@ export class WhalePetService {
    */
   public showBubble(text: string, ttlMs = RECAP_TTL_MS): void {
     if (this.disposed || text === '') return
-    this.recapCurrent = { id: this.nextRecapId, text: text.slice(0, 220) }
+    this.recapCurrent = { id: this.nextRecapId, text: text.slice(0, BUBBLE_TEXT_LIMIT) }
     this.nextRecapId += 1
     this.publish()
     this.scheduleRecapClear(ttlMs)

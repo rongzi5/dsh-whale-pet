@@ -28,7 +28,7 @@ import { progressToText, type WhaleSessionProgress } from '../progress.ts'
 import { daysSince, loadWhalePetState, type StorageLike } from '../persistence.ts'
 
 const THINKING_MS = 30_000
-const REPLY_BUBBLE_MS = 12_000
+const REPLY_BUBBLE_MS = 15_000
 const BUSY_BUBBLE_MS = 2_500
 const ERROR_BUBBLE_MS = 4_000
 const PREFS_KEY = 'dsh.whale-pet.chat-prefs.v1'
@@ -217,12 +217,12 @@ export class WhalePetChat {
     try {
       const result = await this.transport.runTask(task.prompt, '鲸鲸的任务', sessionId)
       const summary = result.completed
-        ? `搞定！${result.output.slice(0, 900)}`
+        ? `搞定！${result.output.slice(0, 600)}`
         : `任务还在跑（会话 ${result.sessionId}），我拿到的是：${result.output.slice(0, 300)}`
       const next = rememberFacts(memory, [])
       const persisted = appendTurn(appendTurn(next, 'user', userText), 'assistant', summary)
       saveWhaleMemory(this.storage, persisted)
-      this.service.showBubble(summary, 20_000)
+      this.service.showBubble(summary, 30_000)
     } catch (error) {
       this.service.setExternalMood('error', Date.now() + 3_000)
       this.service.playErrorReaction(Date.now() + 3_000)

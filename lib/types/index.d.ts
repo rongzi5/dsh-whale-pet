@@ -25,11 +25,11 @@ export interface WhalePetHostConfig {
     model?: string;
 }
 /**
- * Required services. `webServer` hosts the routes; `llm`, `credentials` and
- * `sessions` are declared so the proxy can use the DSH LLM service,
- * credentials and session store — cordis forbids accessing undeclared
- * services from plugin scope, so a try/catch alone silently degrades to the
- * direct-upstream fallback.
+ * Required services. `webServer` hosts the routes; `llm`, `credentials`,
+ * `sessions` and `jobs` are declared so the proxy can use the DSH LLM
+ * service, credentials, session store and job registry — cordis forbids
+ * accessing undeclared services from plugin scope, so a try/catch alone
+ * silently degrades to the direct-upstream fallback.
  */
 export declare const inject: string[];
 /** Mount the chat proxy routes. */

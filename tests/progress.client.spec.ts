@@ -42,6 +42,14 @@ describe('progressToText', () => {
     expect(progressToText({ ...BUSY, tools: ['tool-fs-search'] })).toBe('正在翻文件（tool-fs-search），已经 3 分钟')
     expect(progressToText({ ...BUSY, tools: ['something-unknown'] })).toBe('正在忙活（something-unknown），已经 3 分钟')
   })
+
+  it('prefers a running background job over the in-flight tool', () => {
+    const withJob = {
+      ...BUSY,
+      jobs: [{ label: 'npm run build', startedAt: Date.now() - 300_000, outputTail: '进度 45%' }],
+    }
+    expect(progressToText(withJob)).toBe('正在后台跑 npm run build（已 5 分钟）')
+  })
 })
 
 describe('buildProgressContext', () => {
@@ -60,6 +68,14 @@ describe('buildProgressContext', () => {
     const block = buildProgressContext({ ...BUSY, tools: [] })
     expect(block).toContain('正在深度思考')
     expect(block).not.toContain('正在运行：')
+  })
+
+  it('includes probed background jobs with their output tail', () => {
+    const block = buildProgressContext({
+      ...BUSY,
+      jobs: [{ label: 'npm run build', startedAt: Date.now() - 300_000, outputTail: '进度 45%' }],
+    })
+    expect(block).toContain('后台任务运行中：npm run build（已 5 分钟，最近输出：进度 45%）')
   })
 
   it('returns null when nothing is active', () => {

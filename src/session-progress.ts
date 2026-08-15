@@ -3,13 +3,16 @@
  *
  * Reads the live dsh session event log (read-only) and summarizes what the
  * agent is doing right now: current step number, tools still in flight,
- * last activity and last tool-result summary. Served at
+ * last activity and last tool-result summary. Running background jobs from
+ * the jobs registry are folded in too, so long tasks started with the
+ * `jobs` tool report their real state and output tail. Served at
  * `GET /api/whale-pet/progress?session=<id>`; the browser pet merges this
  * with its own coarse projection snapshot.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { SessionId, type SessionEvent, type SessionStore } from '@deepseek-ai/dsh-session'
+import type { JobRegistry, JobSnapshot } from '@deepseek-ai/dsh-jobs'
 
 /** Extracted plain text from message content blocks. */
 function textOf(blocks: ReadonlyArray<{ type?: string; text?: unknown }> | undefined): string {
@@ -19,6 +22,13 @@ function textOf(blocks: ReadonlyArray<{ type?: string; text?: unknown }> | undef
     .map(block => block.text as string)
     .join('')
     .trim()
+}
+
+/** One running background job, with its latest output tail. */
+export interface SessionProgressJobsEntry {
+  label: string
+  startedAt: number
+  outputTail?: string
 }
 
 export interface SessionProgressSummary {
@@ -31,11 +41,43 @@ export interface SessionProgressSummary {
   lastTool?: string
   lastActivity?: string
   lastSummary?: string
+  /** Running background jobs (finishedAt absent), newest first. */
+  jobs?: readonly SessionProgressJobsEntry[]
 }
 
 const ACTIVITY_ARGS_LIMIT = 60
 const ACTIVITY_TEXT_LIMIT = 60
 const SUMMARY_TEXT_LIMIT = 140
+const JOB_OUTPUT_TAIL_LIMIT = 120
+
+/**
+ * Summarize the running background jobs (pure, for tests). `readOutput`
+ * returns the job's captured text; a settled job (finishedAt present) is
+ * skipped.
+ */
+export function summarizeJobs(
+  snapshots: readonly JobSnapshot[],
+  readOutput: (id: JobSnapshot['id']) => string | undefined,
+  limit = 5,
+): SessionProgressJobsEntry[] {
+  const entries: SessionProgressJobsEntry[] = []
+  for (const job of snapshots) {
+    if (job.finishedAt !== undefined) continue
+    if (entries.length >= limit) break
+    let tail: string | undefined
+    try {
+      const output = readOutput(job.id)
+      if (output !== undefined) {
+        const trimmed = output.trim()
+        if (trimmed !== '') tail = trimmed.slice(-JOB_OUTPUT_TAIL_LIMIT)
+      }
+    } catch {
+      tail = undefined
+    }
+    entries.push({ label: job.label, startedAt: job.startedAt, ...(tail !== undefined ? { outputTail: tail } : {}) })
+  }
+  return entries
+}
 
 /**
  * Summarize one session's event log into a fine-grained progress snapshot.
@@ -149,7 +191,10 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
 }
 
 /** HTTP handler for `GET /api/whale-pet/progress?session=<id>`. */
-export function createProgressHandler(store: SessionStore | null): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+export function createProgressHandler(
+  store: SessionStore | null,
+  jobs: JobRegistry | null = null,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     if (url.pathname !== '/api/whale-pet/progress') {
@@ -174,6 +219,17 @@ export function createProgressHandler(store: SessionStore | null): (req: Incomin
       sendJson(res, 404, { error: 'session not found' })
       return
     }
-    sendJson(res, 200, summarizeSession(session.events, Date.now()))
+    const summary = summarizeSession(session.events, Date.now())
+    // Probe the jobs registry for running background tasks (real state +
+    // output tail) — the "主动探寻" part of a progress question.
+    if (jobs !== null) {
+      try {
+        const runningJobs = summarizeJobs(jobs.list(), id => jobs.read(id).text)
+        if (runningJobs.length > 0) summary.jobs = runningJobs
+      } catch {
+        // Jobs registry unavailable; the event-log summary still stands.
+      }
+    }
+    sendJson(res, 200, summary)
   }
 }

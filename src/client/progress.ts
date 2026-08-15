@@ -34,6 +34,12 @@ export interface WhaleSessionProgress {
   lastActivity?: string
   /** Fine-grained: truncated summary of the latest tool result. */
   lastSummary?: string
+  /** Fine-grained: running background jobs probed from the jobs registry. */
+  jobs?: ReadonlyArray<{
+    label: string
+    startedAt: number
+    outputTail?: string
+  }>
 }
 
 /** Tool-name → playful-but-clear activity phrasing, first match wins. */
@@ -55,13 +61,24 @@ function flavorTool(name: string): string {
   return '正在忙活'
 }
 
+/** Elapsed minutes for a job, clamped to at least 1. */
+function elapsedMinutes(startedAt: number, now = Date.now()): number {
+  return Math.max(1, Math.round((now - startedAt) / 60_000))
+}
+
 /**
- * One-line human bubble: "正在鼓捣终端（bash），已经 3 分钟" /
+ * One-line human bubble. A running background job is the most concrete
+ * "progress" the pet found, so it wins over the in-flight tool phrasing:
+ * "正在后台跑 npm run build（已 5 分钟）" / "正在鼓捣终端（bash），已经 3 分钟" /
  * "正在深度思考…" / "刚跑完 bash".
  */
 export function progressToText(progress: WhaleSessionProgress | null): string | null {
   if (progress === null || !progress.active) return null
   if (progress.running) {
+    const job = progress.jobs?.[0]
+    if (job !== undefined) {
+      return `正在后台跑 ${job.label}（已 ${elapsedMinutes(job.startedAt)} 分钟）`
+    }
     const minutes = Math.max(1, Math.round(progress.turnMs / 60_000))
     const time = `已经 ${minutes} 分钟`
     if (progress.tools.length > 0) {
@@ -94,6 +111,11 @@ export function buildProgressContext(progress: WhaleSessionProgress | null): str
     }
   } else {
     lines.push('- agent 当前空闲')
+  }
+  for (const job of progress.jobs ?? []) {
+    const minutes = elapsedMinutes(job.startedAt)
+    const tail = job.outputTail !== undefined ? `，最近输出：${job.outputTail}` : ''
+    lines.push(`- 后台任务运行中：${job.label}（已 ${minutes} 分钟${tail}）`)
   }
   if (progress.nodeCount > 0) lines.push(`- 会话已提交 ${progress.nodeCount} 个节点`)
   if (progress.lastTool !== undefined) lines.push(`- 最近一次工具调用：${progress.lastTool}`)

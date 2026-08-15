@@ -33,9 +33,17 @@ export interface WhaleSessionProgress {
     lastActivity?: string;
     /** Fine-grained: truncated summary of the latest tool result. */
     lastSummary?: string;
+    /** Fine-grained: running background jobs probed from the jobs registry. */
+    jobs?: ReadonlyArray<{
+        label: string;
+        startedAt: number;
+        outputTail?: string;
+    }>;
 }
 /**
- * One-line human bubble: "正在鼓捣终端（bash），已经 3 分钟" /
+ * One-line human bubble. A running background job is the most concrete
+ * "progress" the pet found, so it wins over the in-flight tool phrasing:
+ * "正在后台跑 npm run build（已 5 分钟）" / "正在鼓捣终端（bash），已经 3 分钟" /
  * "正在深度思考…" / "刚跑完 bash".
  */
 export declare function progressToText(progress: WhaleSessionProgress | null): string | null;

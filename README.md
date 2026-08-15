@@ -71,19 +71,22 @@ While a request is in flight the pet holds the `thinking` mood (an external
 override the session observer respects) and reacts with an error mood and sweat
 drops if the proxy is unreachable or unconfigured (no key → HTTP 503).
 
-### Session progress (read-only)
+### Session progress (read-only, probed on ask)
 
-The pet can answer "进度如何了": every chat request appends a compact
-**read-only progress snapshot** to the pet's own system prompt, so it
-truthfully reports long-task progress. The snapshot has two layers — the
-live projection state (running tools, turn duration, node count, goal/plan
-phase) plus a fine-grained summary from the host event log (current step,
-latest activity like "运行 bash：npm test", latest result summary; served at
+The pet can answer "进度如何了": **when asked**, the pet actively probes the
+current progress and appends a compact **read-only snapshot** to its own
+system prompt, so it truthfully reports long-task progress. The probe has
+three layers — the live projection state (running tools, turn duration, node
+count, goal/plan phase), a fine-grained summary from the host event log
+(current step, latest activity like "运行 bash：npm test", latest result
+summary), and the **jobs registry's real state** (running task labels,
+elapsed time, output tail like "进度 45%"; served at
 `GET /api/whale-pet/progress?session=<id>`). It only reads — it **never
 writes to the DSH conversation**, so long chats are not disturbed.
 
 While the agent is busy, a plain **click on the pet** bubbles a playful but
-factual progress line ("正在鼓捣终端（bash），已经 3 分钟" / "正在深度思考…")
+factual progress line ("正在鼓捣终端（bash），已经 3 分钟" / "正在深度思考…";
+a running background job wins: "正在后台跑 npm run build（已 5 分钟）")
 without typing.
 
 The pet's own context stays **bounded**: up to 24 memory facts (80 chars
@@ -149,7 +152,7 @@ The repository builds standalone (no pnpm workspace, no dsh checkout):
 ```sh
 npm install            # dev toolchain: typescript, esbuild, vitest, three…
 npm run build          # tsc declarations + esbuild host/client bundles → lib/
-npm test               # vitest suite (120 tests)
+npm test               # vitest suite (125 tests)
 node install-profile.mjs web
 ```
 

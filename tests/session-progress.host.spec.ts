@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { summarizeSession } from '../src/session-progress.ts'
+import { summarizeJobs, summarizeSession } from '../src/session-progress.ts'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { JobSnapshot } from '@deepseek-ai/dsh-jobs'
 
 const NOW = 1_000_000
 
@@ -106,5 +107,43 @@ describe('summarizeSession', () => {
     const summary = summarizeSession(events, NOW)
     expect(summary).toMatchObject({ running: true, lastActivity: '正在输出：正在写代码……' })
     expect(summary.lastSummary).toBeUndefined()
+  })
+})
+
+function job(partial: Partial<JobSnapshot> & { label: string }): JobSnapshot {
+  return {
+    id: `job-${partial.label}` as never,
+    kind: 'bash',
+    label: partial.label,
+    status: 'running',
+    startedAt: NOW - 180_000,
+    reported: false,
+    ...partial,
+  }
+}
+
+describe('summarizeJobs', () => {
+  it('reports running jobs with their output tail', () => {
+    const snapshots = [
+      job({ label: 'npm run build', status: 'running' }),
+      job({ label: 'done job', status: 'completed', finishedAt: NOW - 10_000 }),
+    ]
+    const readOutput = (id: JobSnapshot['id']) => (String(id).includes('npm') ? 'line1\nline2\n进度 45%' : '')
+    const jobs = summarizeJobs(snapshots, readOutput)
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]).toMatchObject({ label: 'npm run build', startedAt: NOW - 180_000 })
+    expect(jobs[0]?.outputTail).toContain('进度 45%')
+  })
+
+  it('caps the output tail length', () => {
+    const snapshots = [job({ label: 'long' })]
+    const readOutput = () => 'x'.repeat(500)
+    expect(summarizeJobs(snapshots, readOutput)[0]?.outputTail).toBe('x'.repeat(120))
+  })
+
+  it('drops empty output tails and tolerates read failures', () => {
+    const snapshots = [job({ label: 'quiet' })]
+    expect(summarizeJobs(snapshots, () => '   ')[0]).toEqual({ label: 'quiet', startedAt: NOW - 180_000 })
+    expect(summarizeJobs(snapshots, () => { throw new Error('gone') })[0]).toEqual({ label: 'quiet', startedAt: NOW - 180_000 })
   })
 })

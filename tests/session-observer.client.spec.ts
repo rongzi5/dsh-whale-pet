@@ -230,6 +230,12 @@ describe('SessionWhaleObserver', () => {
     expect(service.getSnapshot().effects.some(effect => effect.kind === 'heart')).toBe(true)
     expect(service.getSnapshot().effects.some(effect => effect.kind === 'bubble')).toBe(true)
 
+    // Hearts keep appearing while the loop runs, then stop with it.
+    vi.advanceTimersByTime(4_000)
+    expect(service.getSnapshot().effects.some(effect => effect.kind === 'heart')).toBe(true)
+    vi.advanceTimersByTime(5_000)
+    expect(service.getSnapshot().effects.some(effect => effect.kind === 'heart')).toBe(false)
+
     observer.dispose()
     service.dispose()
   })

@@ -15,6 +15,9 @@ const EFFECT_TTL_MS: Record<WhaleEffectKind, number> = {
   sweat: 5000,
 }
 
+const CELEBRATION_HEART_INTERVAL_MS = 650
+const CELEBRATION_EFFECTS_MS = 7_000
+
 export class WhalePetService {
   private readonly controller = new WhalePetController()
   private readonly listeners = new Set<() => void>()
@@ -106,12 +109,30 @@ export class WhalePetService {
     this.timers.add(timer)
   }
 
-  /** Short celebration: hearts + bubbles, and the motion layer runs a victory lap. */
+  /** Celebration: hearts keep appearing for the whole loop, plus bubbles. */
   public celebrate(): void {
+    if (this.disposed) return
     this.playEffect('heart')
     this.playEffect('bubble')
     this.playEffect('bubble')
+    this.scheduleCelebrationHearts()
     this.controller.celebrate()
+  }
+
+  private scheduleCelebrationHearts(): void {
+    const deadline = Date.now() + CELEBRATION_EFFECTS_MS
+    let timer: ReturnType<typeof setTimeout>
+    const emit = (): void => {
+      this.timers.delete(timer)
+      if (this.disposed) return
+      this.playEffect('heart')
+      if (Date.now() < deadline) {
+        timer = setTimeout(emit, CELEBRATION_HEART_INTERVAL_MS)
+        this.timers.add(timer)
+      }
+    }
+    timer = setTimeout(emit, CELEBRATION_HEART_INTERVAL_MS)
+    this.timers.add(timer)
   }
 
   /** Release timers, listeners and the WebGL surface. */

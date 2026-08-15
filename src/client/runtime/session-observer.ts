@@ -251,10 +251,12 @@ export class SessionWhaleObserver {
     const active = snapshot.running || hasPartial || hasCalls
     if (active) this.lastActivityAt = now
 
-    // Tool/turn failures: react immediately, once per new failure.
+    // Tool/turn failures: react once per new failure node. `lastAgentError`
+    // can lag behind the node projection after a rebind, so the node seq is
+    // the single trigger authority.
     const errorSeq = latestErrorSeq(snapshot.nodes)
     const agentError = snapshot.lastAgentError ?? null
-    if (errorSeq > this.lastErrorSeq || (agentError !== null && agentError !== this.lastAgentError)) {
+    if (errorSeq > this.lastErrorSeq) {
       this.lastErrorSeq = errorSeq
       this.lastAgentError = agentError
       this.transient = { mood: 'error', until: now + ERROR_MS }

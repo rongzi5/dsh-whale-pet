@@ -16,6 +16,15 @@ const MENU_WIDTH = 156
 const MENU_HEIGHT = 176
 /** Ignore the click that browsers fire right after a context menu. */
 const CLICK_AFTER_CONTEXT_MENU_MS = 400
+/** How long the pet keeps listening after the input loses focus. */
+const USER_TYPING_BLUR_DELAY_MS = 800
+
+const isEditableTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false
+  if (target instanceof HTMLTextAreaElement) return true
+  if (target instanceof HTMLInputElement) return true
+  return target.isContentEditable
+}
 
 /** The frame-wide interactive whale pet surface (view only). */
 export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
@@ -69,6 +78,34 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
       window.removeEventListener('blur', close)
     }
   }, [menu])
+
+  // The pet listens (floating "？") only while the user is composing a reply
+  // in the chat input; a short grace period avoids flicker when focus moves
+  // between the input and its toolbar.
+  useEffect(() => {
+    let blurTimer: ReturnType<typeof setTimeout> | null = null
+    const onFocusIn = (event: globalThis.FocusEvent): void => {
+      if (!isEditableTarget(event.target)) return
+      if (blurTimer !== null) {
+        clearTimeout(blurTimer)
+        blurTimer = null
+      }
+      whalePet.setUserTyping(true)
+    }
+    const onFocusOut = (): void => {
+      if (blurTimer !== null) clearTimeout(blurTimer)
+      blurTimer = setTimeout(() => {
+        whalePet.setUserTyping(false)
+      }, USER_TYPING_BLUR_DELAY_MS)
+    }
+    document.addEventListener('focusin', onFocusIn, true)
+    document.addEventListener('focusout', onFocusOut, true)
+    return () => {
+      if (blurTimer !== null) clearTimeout(blurTimer)
+      document.removeEventListener('focusin', onFocusIn, true)
+      document.removeEventListener('focusout', onFocusOut, true)
+    }
+  }, [whalePet])
 
   const isPetDescendant = (target: EventTarget | null): boolean => {
     const pet = petRef.current

@@ -111,15 +111,6 @@ function latestError(nodes: readonly ConversationNodeLike[]): ErrorMark | null {
   return { seq, time, kind, ...(exitCode !== undefined ? { exitCode } : {}), ...(toolName !== undefined ? { toolName } : {}) }
 }
 
-/** Highest seq of a landed user message; -1 when the window has none. */
-function latestUserSeq(nodes: readonly ConversationNodeLike[]): number {
-  let seq = -1
-  for (const node of nodes) {
-    if (node.kind === 'user') seq = Math.max(seq, node.seq ?? 0)
-  }
-  return seq
-}
-
 /** One-line recap text for a fresh failure node. */
 function errorRecapText(mark: ErrorMark): string {
   if (mark.kind === 'turn-error') return '回合出错'
@@ -142,7 +133,7 @@ export function deriveWhaleActivity(
     running: boolean
     turnStartedAt: number
     lastActivityAt: number
-    awaitingInput: boolean
+    userTyping: boolean
   },
 ): WhaleActivity {
   if (state.active) {
@@ -150,11 +141,9 @@ export function deriveWhaleActivity(
     if (runningMs >= FOCUS_AFTER_MS) return { mood: 'focused', intensity: 1 }
     return { mood: state.running ? 'working' : 'thinking', intensity: 0.7 }
   }
-  // The agent finished its turn and is waiting for the user to reply: the
-  // pet stays attentive (but not "active") until a user message lands.
-  if (state.awaitingInput && now - state.lastActivityAt < IDLE_SLEEP_MS) {
-    return { mood: 'listening', intensity: 0.6 }
-  }
+  // The user is composing a reply: the pet looks on expectantly and stays
+  // awake regardless of the idle clock, until the input loses focus.
+  if (state.userTyping) return { mood: 'listening', intensity: 0.6 }
   if (!state.running && now - state.lastActivityAt >= IDLE_SLEEP_MS) {
     return { mood: 'sleeping', intensity: 1 }
   }
@@ -182,8 +171,7 @@ export class SessionWhaleObserver {
   private lastMood: WhaleActivity['mood'] | null = null
   private boundAt = 0
   private lastNodeCount = -1
-  private awaitingInput = false
-  private lastUserSeq = -1
+  private userTyping = false
   private disposed = false
 
   public constructor(
@@ -223,6 +211,20 @@ export class SessionWhaleObserver {
   /** Record direct user interaction so sleep can be interrupted. */
   public noteUserActivity(): void {
     this.lastActivityAt = Date.now()
+  }
+
+  /**
+   * Track whether the user is composing a reply. Driven by DOM focus events
+   * on the chat input from the view; while typing, the pet stays in the
+   * `listening` mood and the idle clock is held.
+   */
+  public setUserTyping(typing: boolean): void {
+    if (this.userTyping === typing || this.disposed) return
+    this.userTyping = typing
+    if (typing) {
+      this.lastActivityAt = Date.now()
+      this.service.pushRecap('在呢，我听着～')
+    }
   }
 
   private tick(): void {
@@ -268,8 +270,6 @@ export class SessionWhaleObserver {
       this.knownPlanActive = undefined
       this.transient = null
       this.boundAt = 0
-      this.awaitingInput = false
-      this.lastUserSeq = -1
       if (current === undefined) {
         this.applyActivity({ mood: 'idle', intensity: 0 })
       }
@@ -289,8 +289,6 @@ export class SessionWhaleObserver {
     this.lastActivityAt = Date.now()
     this.lastErrorSeq = latestError(snapshot.nodes)?.seq ?? -1
     this.lastAgentError = snapshot.lastAgentError ?? null
-    this.lastUserSeq = latestUserSeq(snapshot.nodes)
-    this.awaitingInput = false
     console.debug('[ui-whale-pet] session bridge bound', current, {
       running: snapshot.running,
       calls: snapshot.runningCalls.length,
@@ -318,13 +316,6 @@ export class SessionWhaleObserver {
     const hasCalls = snapshot.runningCalls.length > 0
     const active = snapshot.running || hasPartial || hasCalls
     if (active) this.lastActivityAt = now
-
-    // A landed user message ends the "waiting for input" window.
-    const userSeq = latestUserSeq(snapshot.nodes)
-    if (userSeq > this.lastUserSeq) {
-      this.lastUserSeq = userSeq
-      this.awaitingInput = false
-    }
 
     // Tool/turn failures: react once per new failure node. History windows
     // load asynchronously after binding, so late-arriving OLD nodes (time
@@ -360,7 +351,6 @@ export class SessionWhaleObserver {
     // Turn boundaries: celebrate long completed turns, goals, and plans.
     if (snapshot.running && !this.wasRunning) {
       this.turnStartedAt = now
-      this.awaitingInput = false
     }
     if (!snapshot.running && this.wasRunning) {
       const turnMs = now - this.turnStartedAt
@@ -368,8 +358,6 @@ export class SessionWhaleObserver {
         this.celebrate(now)
         this.service.pushRecap('长回合完成 🎉')
       }
-      // The agent handed the conversation back: the pet waits for input.
-      this.awaitingInput = true
     }
 
     const goalPhase = readGoalPhase(this.goalFace)
@@ -408,7 +396,7 @@ export class SessionWhaleObserver {
       running: snapshot.running,
       turnStartedAt: this.turnStartedAt,
       lastActivityAt: this.lastActivityAt,
-      awaitingInput: this.awaitingInput,
+      userTyping: this.userTyping,
     })
 
     // Thinking/working/focused keeps a slow stream of bubbles so the
@@ -419,11 +407,6 @@ export class SessionWhaleObserver {
     ) {
       this.lastActivityBubbleAt = now
       this.service.playEffect('bubble')
-    }
-
-    // Entering the listening mood once per turn hand-back.
-    if (mood.mood === 'listening' && this.lastMood !== 'listening') {
-      this.service.pushRecap('等你输入…')
     }
 
     this.applyActivity(mood)

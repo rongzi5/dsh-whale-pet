@@ -20,7 +20,7 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
 
 - **Click recap** — clicking the pet cycles a speech bubble through the name/days
   entry and recent session events (completed long turns, goal/plan milestones,
-  tool failures with tool name and exit code, "waiting for your input").
+  tool failures with tool name and exit code, typing greetings).
 - **Right-click menu** — rename the pet, toggle corner snapping, glide back to a
   corner, or hide it. The menu is keyboard-accessible (Enter/Space) and closes
   on outside click or Escape.
@@ -46,7 +46,7 @@ reaction.
 | One turn runs longer than 20s | `focused`: a slight dive posture |
 | Tool fails (non-zero exit code or error node) | `error`: sweat drop + startled eyes for 8s |
 | Long turn (≥15s), goal completion, or plan exit | `celebrating`: a 360° elliptical lap with continuous yaw and screen-space depth, while hearts stream every 650ms |
-| The agent finished its turn and waits for your reply | `listening`: rests, gazes at the input area, shows a floating "？", and recaps "等你输入…" on click |
+| You are composing a reply in the chat input | `listening`: gazes at the input area, shows a floating "？", and recaps "在呢，我听着～" on click |
 | Hover or drag while sleeping | Wakes immediately and resets the idle clock |
 | No activity for 60s | `sleeping`: closed eyes, slow breathing, z-z-z |
 

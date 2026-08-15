@@ -23,24 +23,26 @@ function createObservable<T>(initial: T): ObservableLike<T> & { set(value: T): v
 describe('deriveWhaleActivity', () => {
   it('derives working/thinking/focused from an active session', () => {
     const now = 100_000
-    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 1_000, lastActivityAt: now, awaitingInput: false })).toEqual({ mood: 'working', intensity: 0.7 })
-    expect(deriveWhaleActivity(now, { active: true, running: false, turnStartedAt: now, lastActivityAt: now, awaitingInput: false })).toEqual({ mood: 'thinking', intensity: 0.7 })
-    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 21_000, lastActivityAt: now, awaitingInput: false })).toEqual({ mood: 'focused', intensity: 1 })
+    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 1_000, lastActivityAt: now, userTyping: false })).toEqual({ mood: 'working', intensity: 0.7 })
+    expect(deriveWhaleActivity(now, { active: true, running: false, turnStartedAt: now, lastActivityAt: now, userTyping: false })).toEqual({ mood: 'thinking', intensity: 0.7 })
+    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 21_000, lastActivityAt: now, userTyping: false })).toEqual({ mood: 'focused', intensity: 1 })
   })
 
   it('falls asleep only after a long quiet period', () => {
     const now = 100_000
-    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 10_000, awaitingInput: false })).toEqual({ mood: 'idle', intensity: 0 })
-    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 61_000, awaitingInput: false })).toEqual({ mood: 'sleeping', intensity: 1 })
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 10_000, userTyping: false })).toEqual({ mood: 'idle', intensity: 0 })
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 61_000, userTyping: false })).toEqual({ mood: 'sleeping', intensity: 1 })
   })
 
-  it('derives listening while awaiting user input within the sleep window', () => {
+  it('derives listening only while the user is composing input', () => {
     const now = 100_000
-    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 5_000, awaitingInput: true })).toEqual({ mood: 'listening', intensity: 0.6 })
-    // Activity wins over the awaiting flag…
-    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 1_000, lastActivityAt: now, awaitingInput: true })).toEqual({ mood: 'working', intensity: 0.7 })
-    // …and so does the long-quiet sleep rule.
-    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 61_000, awaitingInput: true })).toEqual({ mood: 'sleeping', intensity: 1 })
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 5_000, userTyping: true })).toEqual({ mood: 'listening', intensity: 0.6 })
+    // Typing holds off sleep even past the idle window…
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 61_000, userTyping: true })).toEqual({ mood: 'listening', intensity: 0.6 })
+    // …and session activity wins over the typing flag.
+    expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 1_000, lastActivityAt: now, userTyping: true })).toEqual({ mood: 'working', intensity: 0.7 })
+    // A finished turn alone no longer shows listening.
+    expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 5_000, userTyping: false })).toEqual({ mood: 'idle', intensity: 0 })
   })
 })
 
@@ -286,17 +288,16 @@ describe('SessionWhaleObserver', () => {
 
     expect(service.getSnapshot().activity.mood).toBe('sleeping')
 
-    // Hover/drag wakes the pet and resets the idle clock; since the agent
-    // still owes the user a reply, the pet wakes into listening.
+    // Hover/drag wakes the pet and resets the idle clock.
     service.wake()
     vi.advanceTimersByTime(200)
-    expect(service.getSnapshot().activity.mood).toBe('listening')
+    expect(service.getSnapshot().activity.mood).toBe('idle')
 
     observer.dispose()
     service.dispose()
   })
 
-  it('turns the pet to listening when the agent hands the turn back', () => {
+  it('stays idle after the agent hands the turn back and listens while the user types', () => {
     const { conversation, observer, service } = setup()
     observer.start()
 
@@ -318,44 +319,41 @@ describe('SessionWhaleObserver', () => {
       lastAgentError: null,
     })
     vi.advanceTimersByTime(200)
+    // The finished turn alone no longer shows listening.
+    expect(service.getSnapshot().activity.mood).toBe('idle')
+
+    // Focusing the chat input puts the pet into listening.
+    observer.setUserTyping(true)
+    vi.advanceTimersByTime(200)
     expect(service.getSnapshot().activity.mood).toBe('listening')
 
-    // The waiting recap is queued and surfaces on the next click.
+    // The listening recap is queued and surfaces on the next click.
     service.nextRecap()
-    expect(service.getSnapshot().recap?.text).toBe('等你输入…')
+    expect(service.getSnapshot().recap?.text).toBe('在呢，我听着～')
+
+    // Losing focus returns the pet to idle.
+    observer.setUserTyping(false)
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('idle')
 
     observer.dispose()
     service.dispose()
   })
 
-  it('leaves listening when the user starts a new turn', () => {
+  it('leaves listening when the session becomes active', () => {
     const { conversation, observer, service } = setup()
     observer.start()
 
-    conversation.set({
-      running: true,
-      partial: { blocks: [1] },
-      runningCalls: [],
-      nodes: [{ kind: 'user', seq: 1 }],
-      lastAgentError: null,
-    })
-    vi.advanceTimersByTime(200)
-    conversation.set({
-      running: false,
-      partial: null,
-      runningCalls: [],
-      nodes: [{ kind: 'user', seq: 1 }, { kind: 'assistant', seq: 5 }],
-      lastAgentError: null,
-    })
+    observer.setUserTyping(true)
     vi.advanceTimersByTime(200)
     expect(service.getSnapshot().activity.mood).toBe('listening')
 
-    // A new user message starts a fresh turn: back to work.
+    // A user message starts a fresh turn: back to work.
     conversation.set({
       running: true,
       partial: { blocks: [1] },
       runningCalls: [],
-      nodes: [{ kind: 'user', seq: 6 }, { kind: 'assistant', seq: 5 }],
+      nodes: [{ kind: 'user', seq: 6 }],
       lastAgentError: null,
     })
     vi.advanceTimersByTime(200)

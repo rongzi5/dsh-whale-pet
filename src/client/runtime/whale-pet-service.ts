@@ -82,6 +82,12 @@ export class WhalePetService {
     this.controller.setActivity(IDLE_ACTIVITY)
   }
 
+  /** The user is composing a reply (view-driven DOM focus); wakes the pet. */
+  public setUserTyping(typing: boolean): void {
+    if (typing) this.wake()
+    this.observer?.setUserTyping(typing)
+  }
+
   /** View-delegated interaction passthroughs. */
   public setHover(hovering: boolean): void {
     this.controller.setHover(hovering)

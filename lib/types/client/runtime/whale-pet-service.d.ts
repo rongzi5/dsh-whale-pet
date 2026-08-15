@@ -36,6 +36,8 @@ export declare class WhalePetService {
     bindObserver(observer: SessionWhaleObserver): void;
     /** Wake a sleeping pet on hover/drag and refresh the session idle clock. */
     wake(): void;
+    /** The user is composing a reply (view-driven DOM focus); wakes the pet. */
+    setUserTyping(typing: boolean): void;
     /** View-delegated interaction passthroughs. */
     setHover(hovering: boolean): void;
     beginDrag(pointerX: number, pointerY: number): void;

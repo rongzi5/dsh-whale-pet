@@ -61,7 +61,7 @@ export declare function deriveWhaleActivity(now: number, state: {
     running: boolean;
     turnStartedAt: number;
     lastActivityAt: number;
-    awaitingInput: boolean;
+    userTyping: boolean;
 }): WhaleActivity;
 export declare class SessionWhaleObserver {
     private readonly ctx;
@@ -85,8 +85,7 @@ export declare class SessionWhaleObserver {
     private lastMood;
     private boundAt;
     private lastNodeCount;
-    private awaitingInput;
-    private lastUserSeq;
+    private userTyping;
     private disposed;
     constructor(ctx: WhaleSessionClientContext, service: WhalePetService);
     /**
@@ -98,6 +97,12 @@ export declare class SessionWhaleObserver {
     dispose(): void;
     /** Record direct user interaction so sleep can be interrupted. */
     noteUserActivity(): void;
+    /**
+     * Track whether the user is composing a reply. Driven by DOM focus events
+     * on the chat input from the view; while typing, the pet stays in the
+     * `listening` mood and the idle clock is held.
+     */
+    setUserTyping(typing: boolean): void;
     private tick;
     private resolveSessions;
     private rebind;

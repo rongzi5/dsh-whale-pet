@@ -18,7 +18,7 @@ export type WhaleMood =
  | 'error'
 /** No activity for a long time. */
  | 'sleeping'
-/** The agent finished its turn and is waiting for the user to reply. */
+/** The user is composing a reply in the chat input. */
  | 'listening';
 export interface WhaleActivity {
     mood: WhaleMood;

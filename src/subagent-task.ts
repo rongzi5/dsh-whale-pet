@@ -33,7 +33,7 @@ export interface TaskResponse {
   /** Whether the child finished within the timeout. */
   completed: boolean
   /** Diagnostic: how the child settled and how many events it produced. */
-  debug?: { stopReason: string; eventCount: number; eventTypes?: string[]; turnEndReason?: unknown }
+  debug?: { stopReason: string; eventCount: number; eventTypes?: string[]; turnEndReason?: unknown; presetMounted?: boolean; presetMountError?: string }
 }
 
 /** Extract the plain text from message content blocks. */
@@ -167,6 +167,8 @@ export function createTaskHandler(
       : undefined
 
     let handle: { agent: Agent; dispose(): Promise<void> } | null = null
+    let presetMounted = false
+    let presetMountError: string | undefined
     try {
       handle = await agents.create({
         sessionId: SessionId(randomUUID()),
@@ -177,6 +179,23 @@ export function createTaskHandler(
           delegationDepth: 1,
         },
         ...(agentOptions !== undefined ? { agentOptions } : {}),
+        // Compose the deployment preset (bash, fs, web, …) into the child's
+        // scope, exactly like the main agent creation path does — without it
+        // the child only sees globally registered tools. A mount failure does
+        // not roll the task back: the child still runs, just without the
+        // preset toolset.
+        ...(agentPresets !== null && preset !== undefined
+          ? {
+            setup: async (agentCtx: Context): Promise<void> => {
+              try {
+                await agentPresets.mount(agentCtx, preset)
+                presetMounted = true
+              } catch (error) {
+                presetMountError = error instanceof Error ? error.message : String(error)
+              }
+            },
+          }
+          : {}),
       })
       const child = handle.agent
       let stopReason = 'unknown'
@@ -218,6 +237,8 @@ export function createTaskHandler(
           eventCount: events.length,
           eventTypes: [...new Set(events.map(event => event.type))],
           turnEndReason: reason,
+          presetMounted,
+          ...(presetMountError !== undefined ? { presetMountError } : {}),
         },
       }
       sendJson(res, 200, response)

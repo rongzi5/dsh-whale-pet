@@ -32,6 +32,8 @@ export interface TaskResponse {
         eventCount: number;
         eventTypes?: string[];
         turnEndReason?: unknown;
+        presetMounted?: boolean;
+        presetMountError?: string;
     };
 }
 /** Bound body-size guard for task requests (64 KiB). */

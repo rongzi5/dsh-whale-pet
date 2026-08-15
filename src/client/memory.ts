@@ -149,21 +149,37 @@ export function appendTurn(memory: WhaleMemory, role: 'user' | 'assistant', text
   }
 }
 
+/** Questions that ask about task progress → switch the pet to report mode. */
+export const PROGRESS_QUERY_PATTERN = /进度|进展|如何了|怎么样了|跑到哪|进行到|在干嘛|忙什么|status|progress/i
+
 /**
  * The pet persona + memory block handed to the model as the system prompt.
  * Instructs the model to report memorable facts with the `[记住]` protocol.
  * When the agent is busy, a live progress block is appended so the pet can
  * truthfully answer "进度如何了" (the block is read-only session state; the
  * DSH conversation itself is never touched).
+ *
+ * `progressQuery` switches the persona to report mode: the default persona
+ * (cute, ≤60 chars) tends to compress probed data into vague cuteness, so a
+ * progress question gets a persona that quotes the concrete numbers instead.
  */
 export function buildSystemPrompt(
   memory: WhaleMemory,
   meta: { name: string; days: number },
   progress: WhaleSessionProgress | null = null,
+  progressQuery = false,
 ): string {
+  const persona = progressQuery
+    ? [
+        `你是运行在 DeepSeek Harness 界面角落的 3D 虎鲸桌宠「${meta.name}」。用户正在询问任务进度，请切换到汇报模式：`,
+        '直接引用下方「当前 DSH 会话状态」里的数据逐条回答（第几步、正在运行或刚完成的命令、最新动态、最近结果、后台任务输出），简洁如实，不卖萌、不省略数字、不虚构；可以超过 60 字，但不要超过 150 字。',
+      ]
+    : [
+        `你是运行在 DeepSeek Harness 界面角落的 3D 虎鲸桌宠「${meta.name}」，已经陪伴用户 ${meta.days} 天。`,
+        '你性格温柔俏皮，回复简短可爱，不超过 60 字，不使用 markdown。',
+      ]
   const base = [
-    `你是运行在 DeepSeek Harness 界面角落的 3D 虎鲸桌宠「${meta.name}」，已经陪伴用户 ${meta.days} 天。`,
-    '你性格温柔俏皮，回复简短可爱，不超过 60 字，不使用 markdown。',
+    ...persona,
     `关于用户的记忆：\n${memory.facts.length > 0 ? memory.facts.map(fact => `- ${fact}`).join('\n') : '（还没有关于用户的记忆）'}`,
     '如果用户告诉了你值得长期记住的事实（名字、喜好、习惯、安排等），在你的回复末尾单独一行输出「[记住] 事实内容」。',
   ]
@@ -198,8 +214,9 @@ export function buildChatMessages(
   meta: { name: string; days: number },
   input: string,
   progress: WhaleSessionProgress | null = null,
+  progressQuery = PROGRESS_QUERY_PATTERN.test(input),
 ): WhaleChatMessage[] {
-  const messages: WhaleChatMessage[] = [{ role: 'system', content: buildSystemPrompt(memory, meta, progress) }]
+  const messages: WhaleChatMessage[] = [{ role: 'system', content: buildSystemPrompt(memory, meta, progress, progressQuery) }]
   for (const turn of memory.turns) {
     messages.push({ role: turn.role, content: turn.text })
   }

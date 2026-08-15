@@ -48,6 +48,22 @@ describe('buildSystemPrompt', () => {
     expect(busy).toContain('bash')
     expect(busy).toContain('2 分钟')
   })
+
+  it('switches to report mode for progress questions', () => {
+    const cute = buildSystemPrompt({ facts: [], turns: [] }, META)
+    expect(cute).toContain('简短可爱')
+    const reporting = buildSystemPrompt({ facts: [], turns: [] }, META, null, true)
+    expect(reporting).toContain('汇报模式')
+    expect(reporting).toContain('不卖萌、不省略数字')
+    expect(reporting).not.toContain('简短可爱')
+  })
+
+  it('detects progress questions automatically', () => {
+    const messages = buildChatMessages({ facts: [], turns: [] }, META, '进度如何了？')
+    expect(messages[0]?.content).toContain('汇报模式')
+    const normal = buildChatMessages({ facts: [], turns: [] }, META, '今天天气不错')
+    expect(normal[0]?.content).not.toContain('汇报模式')
+  })
 })
 
 describe('extractFacts / stripMemoryMarkers', () => {

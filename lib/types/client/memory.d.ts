@@ -50,17 +50,23 @@ export declare function rememberFacts(memory: WhaleMemory, facts: readonly strin
  * being dropped outright, so long conversations keep a coarse digest.
  */
 export declare function appendTurn(memory: WhaleMemory, role: 'user' | 'assistant', text: string): WhaleMemory;
+/** Questions that ask about task progress → switch the pet to report mode. */
+export declare const PROGRESS_QUERY_PATTERN: RegExp;
 /**
  * The pet persona + memory block handed to the model as the system prompt.
  * Instructs the model to report memorable facts with the `[记住]` protocol.
  * When the agent is busy, a live progress block is appended so the pet can
  * truthfully answer "进度如何了" (the block is read-only session state; the
  * DSH conversation itself is never touched).
+ *
+ * `progressQuery` switches the persona to report mode: the default persona
+ * (cute, ≤60 chars) tends to compress probed data into vague cuteness, so a
+ * progress question gets a persona that quotes the concrete numbers instead.
  */
 export declare function buildSystemPrompt(memory: WhaleMemory, meta: {
     name: string;
     days: number;
-}, progress?: WhaleSessionProgress | null): string;
+}, progress?: WhaleSessionProgress | null, progressQuery?: boolean): string;
 /** Extract `[记住] <fact>` lines from a model reply. */
 export declare function extractFacts(reply: string): string[];
 /** Strip `[记住] ...` marker lines so they never show in the bubble. */
@@ -69,4 +75,4 @@ export declare function stripMemoryMarkers(reply: string): string;
 export declare function buildChatMessages(memory: WhaleMemory, meta: {
     name: string;
     days: number;
-}, input: string, progress?: WhaleSessionProgress | null): WhaleChatMessage[];
+}, input: string, progress?: WhaleSessionProgress | null, progressQuery?: boolean): WhaleChatMessage[];

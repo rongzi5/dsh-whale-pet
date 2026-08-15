@@ -146,9 +146,11 @@
   background: rgb(255 255 255 / 94%);
   color: #23315e;
   font: 600 12px/1.4 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Multi-line adaptive bubbles: keep line breaks from chat replies and wrap
+     long text instead of truncating it to a single ellipsized line. */
+  white-space: pre-line;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   box-shadow: 0 4px 14px rgb(18 27 62 / 16%);
   pointer-events: none;
   animation: speech-pop 240ms cubic-bezier(0.2, 0.8, 0.2, 1);

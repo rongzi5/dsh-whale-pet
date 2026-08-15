@@ -46,4 +46,4 @@ export declare const TASK_MAX_BODY_BYTES: number;
 export declare function createTaskHandler(agents: AgentRegistry, sessions: SessionStore | null, workspaceRoot: () => string | undefined, defaultPreset?: () => string | undefined, defaultModel?: () => {
     provider?: string;
     model?: string;
-} | undefined): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+} | undefined, timeoutMs?: number): (req: IncomingMessage, res: ServerResponse) => Promise<void>;

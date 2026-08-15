@@ -58,8 +58,8 @@ function fakeAgents(agent: FakeAgent): AgentRegistry & { createCalls: number } {
   } as unknown as AgentRegistry & { createCalls: number }
 }
 
-async function serve(agents: AgentRegistry): Promise<{ port: number; close: () => void }> {
-  const server = createServer(createTaskHandler(agents, null, () => '/tmp/workspace'))
+async function serve(agents: AgentRegistry, timeoutMs?: number): Promise<{ port: number; close: () => void }> {
+  const server = createServer(createTaskHandler(agents, null, () => '/tmp/workspace', undefined, undefined, timeoutMs))
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()))
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : 0
@@ -108,6 +108,29 @@ describe('createTaskHandler', () => {
       expect(result.status).toBe(200)
       expect(JSON.stringify(result.body)).toContain('boom')
       expect(result.body).toMatchObject({ completed: false })
+    } finally {
+      proxy.close()
+    }
+  })
+
+  it('reports still-running without killing the child on timeout', async () => {
+    let whenIdleCalls = 0
+    const agent = fakeAgent([])
+    agent.whenIdle = async (): Promise<void> => {
+      whenIdleCalls += 1
+      // Never settles: simulates a long-running task.
+      await new Promise<void>(() => {})
+    }
+    const agents = fakeAgents(agent)
+    const proxy = await serve(agents, 50)
+    try {
+      const result = await httpPost(proxy.port, '/api/whale-pet/task', { prompt: '跑个长任务' })
+      expect(result.status).toBe(200)
+      expect(result.body).toMatchObject({ completed: false })
+      expect(JSON.stringify(result.body)).toContain('任务仍在进行中')
+      // The child was NOT cancelled — it keeps running in the background.
+      expect(agent.cancelled).toBe(false)
+      expect(whenIdleCalls).toBe(1)
     } finally {
       proxy.close()
     }

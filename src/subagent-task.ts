@@ -122,6 +122,7 @@ export function createTaskHandler(
   workspaceRoot: () => string | undefined,
   defaultPreset: () => string | undefined = () => undefined,
   defaultModel: () => { provider?: string; model?: string } | undefined = () => undefined,
+  timeoutMs: number = TASK_TIMEOUT_MS,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
@@ -175,27 +176,22 @@ export function createTaskHandler(
         ...(agentOptions !== undefined ? { agentOptions } : {}),
       })
       const child = handle.agent
-      const signal = AbortSignal.timeout(TASK_TIMEOUT_MS)
-      const onAbort = (): void => {
-        try {
-          child.cancel({ kind: 'parent' })
-        } catch {
-          // Already settled; cancellation is best-effort.
-        }
-      }
-      signal.addEventListener('abort', onAbort, { once: true })
       let stopReason = 'unknown'
+      let timedOut = false
       try {
         child.followup(createUserMessage({
           content: [{ type: 'text', text: taskPersona(prompt) }],
           source: { kind: 'user' },
         }))
-        await child.whenIdle()
-        stopReason = 'completed'
+        // Wait for the turn, but never kill the child on timeout: the host
+        // reports "still running" (with the session id) while the task keeps
+        // going in the background and stays visible in the session list.
+        const timeout = new Promise<'timeout'>(resolve => setTimeout(() => resolve('timeout'), timeoutMs))
+        const settled = await Promise.race([child.whenIdle().then(() => 'idle' as const), timeout])
+        timedOut = settled === 'timeout'
+        if (!timedOut) stopReason = 'completed'
       } catch (error) {
         stopReason = error instanceof Error ? error.message : String(error)
-      } finally {
-        signal.removeEventListener('abort', onAbort)
       }
       const events = child.session.events
       const reason = turnEndReasonOf(events)
@@ -207,11 +203,13 @@ export function createTaskHandler(
         output = failure !== undefined
           ? `子代理回合出错：${failure.code ?? ''} ${failure.message ?? ''}`.trim().slice(0, 300)
           : '子代理回合出错'
+      } else if (output === '' && timedOut) {
+        output = '任务仍在进行中，可打开会话查看进度'
       }
       const response: TaskResponse = {
         output,
         sessionId: child.session.id,
-        completed: reasonKind === 'completed' && output !== '',
+        completed: reasonKind === 'completed' && output !== '' && !timedOut,
         debug: {
           stopReason,
           eventCount: events.length,

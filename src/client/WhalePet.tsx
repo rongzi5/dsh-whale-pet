@@ -81,7 +81,12 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
 
   return (
     <div ref={rootRef} className={styles.layer} style={{ pointerEvents: 'none' }}>
-      <div ref={petRef} className={styles.pet}>
+      <div
+        ref={petRef}
+        className={styles.pet}
+        data-whale-activity={snapshot.activity.mood}
+        data-whale-bridge={snapshot.bridge}
+      >
         <span ref={shadowRef} className={styles.shadow} aria-hidden="true" />
         <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
         <button

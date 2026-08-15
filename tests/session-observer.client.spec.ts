@@ -77,6 +77,45 @@ describe('SessionWhaleObserver', () => {
     return { conversation, goal, list, observer, plan, service, sessions }
   }
 
+  it('keeps retrying until the sessions service appears', () => {
+    const list = createObservable<{ current?: string }>({ current: 'session-1' })
+    const conversation = createObservable({
+      running: false,
+      partial: null as { blocks: readonly unknown[] } | null,
+      runningCalls: [] as unknown[],
+      nodes: [] as { kind?: string; seq?: number; isError?: boolean }[],
+      lastAgentError: null as string | null,
+    })
+    const sessions = {
+      list,
+      binding(id: string): { session: typeof conversation } | undefined {
+        return id === 'session-1' ? { session: conversation } : undefined
+      },
+    }
+    let provided: typeof sessions | undefined
+    const ctx = {
+      get sessions(): typeof sessions | undefined {
+        if (provided === undefined) throw new Error('sessions service not available yet')
+        return provided
+      },
+    }
+
+    const service = new WhalePetService()
+    const observer = new SessionWhaleObserver(ctx, service)
+    observer.start()
+    expect(service.getSnapshot().bridge).toBe('waiting')
+
+    vi.advanceTimersByTime(400)
+    expect(service.getSnapshot().bridge).toBe('waiting')
+
+    provided = sessions
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().bridge).toBe('bound')
+
+    observer.dispose()
+    service.dispose()
+  })
+
   it('maps running tool calls to working and long turns to focused', () => {
     const { conversation, observer, service } = setup()
     observer.start()

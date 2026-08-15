@@ -33,10 +33,14 @@ export interface WhaleEffect {
   kind: WhaleEffectKind
 }
 
+/** Session-bridge lifecycle, surfaced for diagnostics and DOM inspection. */
+export type WhaleBridgeState = 'off' | 'waiting' | 'bound'
+
 /** Stable view snapshot consumed through useSyncExternalStore. */
 export interface WhalePetViewSnapshot {
   activity: WhaleActivity
   effects: readonly WhaleEffect[]
+  bridge: WhaleBridgeState
 }
 
 export const IDLE_ACTIVITY: WhaleActivity = Object.freeze({ mood: 'idle', intensity: 0 })

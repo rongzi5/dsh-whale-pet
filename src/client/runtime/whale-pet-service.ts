@@ -5,7 +5,7 @@
  * the same service through {@link setActivity} and {@link playEffect}.
  */
 
-import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleEffect, type WhaleEffectKind, type WhalePetViewSnapshot } from '../activity.ts'
+import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleBridgeState, type WhaleEffect, type WhaleEffectKind, type WhalePetViewSnapshot } from '../activity.ts'
 import { WhalePetController, type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts'
 
 const EFFECT_TTL_MS: Record<WhaleEffectKind, number> = {
@@ -20,7 +20,8 @@ export class WhalePetService {
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
   private activity: WhaleActivity = IDLE_ACTIVITY
   private effects: readonly WhaleEffect[] = []
-  private snapshot: WhalePetViewSnapshot = { activity: this.activity, effects: this.effects }
+  private bridge: WhaleBridgeState = 'off'
+  private snapshot: WhalePetViewSnapshot = { activity: this.activity, effects: this.effects, bridge: this.bridge }
   private nextEffectId = 1
   private disposed = false
 
@@ -53,6 +54,13 @@ export class WhalePetService {
     if (sameActivity(this.activity, activity)) return
     this.activity = activity
     this.controller.setActivity(activity)
+    this.publish()
+  }
+
+  /** Update the session-bridge lifecycle state (observer-owned). */
+  public setBridgeState(bridge: WhaleBridgeState): void {
+    if (this.bridge === bridge) return
+    this.bridge = bridge
     this.publish()
   }
 
@@ -102,13 +110,15 @@ export class WhalePetService {
     this.controller.dispose()
     this.effects = []
     this.activity = IDLE_ACTIVITY
-    this.snapshot = { activity: this.activity, effects: this.effects }
+    this.bridge = 'off'
+    this.snapshot = { activity: this.activity, effects: this.effects, bridge: this.bridge }
   }
 
   private publish(): void {
     this.snapshot = Object.freeze({
       activity: this.activity,
       effects: this.effects,
+      bridge: this.bridge,
     })
     for (const listener of [...this.listeners]) listener()
   }

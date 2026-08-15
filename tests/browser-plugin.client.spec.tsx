@@ -12,6 +12,18 @@ async function bench() {
     name: 'root',
     children: { 'shell.overlay': { kind: 'list', scope: 'root' } },
   } as never, (() => null) as never)
+  const sessions = {
+    list: {
+      getSnapshot: () => ({ current: undefined }),
+      subscribe: () => () => {},
+    },
+    binding: () => undefined,
+  }
+  await ctx.plugin({
+    apply(root: any): void {
+      root.provide('sessions', sessions)
+    },
+  }).await()
   const fiber = ctx.plugin({ inject: [...inject], apply })
   return { ctx, fiber }
 }

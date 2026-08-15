@@ -15,23 +15,26 @@ describe('ui-whale-pet plugin contract', () => {
   it('registers one additive shell overlay entry through the slots service', () => {
     let injectedKey = ''
     let injectCallback: (() => void) | null = null
+    let disposeEffect: (() => void) | null = null
     const entries: RecordedEntry[] = []
 
     const ctx = {
       sessions: undefined,
       effect(callback: () => void | (() => void)): () => void {
         const dispose = callback()
-        return () => {
+        disposeEffect = () => {
           if (typeof dispose === 'function') dispose()
         }
+        return disposeEffect
       },
       provide(): () => void {
         return () => {}
       },
       slots: {
-        inject(key: string, callback: () => void): void {
+        inject(key: string, callback: () => void): () => void {
           injectedKey = key
           injectCallback = callback
+          return () => {}
         },
         register(options: RecordedEntry['options']): () => void {
           const entry: RecordedEntry = { options }
@@ -46,12 +49,15 @@ describe('ui-whale-pet plugin contract', () => {
     apply(ctx as never)
 
     expect(inject).toContain('slots')
+    expect(inject).toContain('sessions')
     expect(injectedKey).toBe('shell.overlay')
     expect(injectCallback).not.toBeNull()
     injectCallback?.()
 
     expect(entries).toHaveLength(1)
     expect(entries[0]?.options).toMatchObject({ id: 'whale-pet', order: 900, label: '3D whale pet' })
+
+    disposeEffect?.()
   })
 
   it('has no host-side behavior', () => {

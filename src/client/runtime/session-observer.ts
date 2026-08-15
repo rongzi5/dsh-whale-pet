@@ -17,6 +17,7 @@ const LONG_TURN_MS = 15_000
 const IDLE_SLEEP_MS = 60_000
 const CELEBRATE_MS = 5_000
 const ERROR_MS = 4_000
+const ACTIVE_BUBBLE_MS = 3_500
 
 export interface ObservableLike<T> {
   getSnapshot(): T
@@ -110,6 +111,7 @@ export function deriveWhaleActivity(
 export class SessionWhaleObserver {
   private listDispose: (() => void) | null = null
   private timer: ReturnType<typeof setInterval> | null = null
+  private sessions: SessionsLike | null = null
   private sessionId: string | undefined
   private session: SessionFaceLike | null = null
   private goalFace: ObservableLike<unknown> | null = null
@@ -123,6 +125,8 @@ export class SessionWhaleObserver {
   private knownGoalPhase: string | undefined
   private knownPlanActive: boolean | undefined
   private transient: TransientMood | null = null
+  private lastActivityBubbleAt = 0
+  private lastMood: WhaleActivity['mood'] | null = null
   private disposed = false
 
   public constructor(
@@ -130,22 +134,18 @@ export class SessionWhaleObserver {
     private readonly service: WhalePetService,
   ) {}
 
-  /** Bind to the current session and start the sample loop. No-op without ctx.sessions. */
+  /**
+   * Start the sample loop. The sessions service may activate after this
+   * plugin, so the bridge keeps retrying every poll until `ctx.sessions`
+   * becomes available.
+   */
   public start(): void {
-    let sessions: SessionsLike | undefined
-    try {
-      sessions = this.ctx.sessions
-    } catch {
-      sessions = undefined
-    }
-    if (sessions === undefined || this.disposed) return
-    const active = sessions
-    this.listDispose = active.list.subscribe(() => {
-      this.rebind(active)
-    })
-    this.rebind(active)
+    if (this.disposed) return
+    this.service.setBridgeState('waiting')
+    this.resolveSessions()
+    if (this.timer !== null) return
     this.timer = setInterval(() => {
-      this.sample(active)
+      this.tick()
     }, POLL_MS)
   }
 
@@ -156,9 +156,37 @@ export class SessionWhaleObserver {
     this.listDispose = null
     if (this.timer !== null) clearInterval(this.timer)
     this.timer = null
+    this.sessions = null
     this.session = null
     this.goalFace = null
     this.planFace = null
+    this.service.setBridgeState('off')
+  }
+
+  private tick(): void {
+    if (this.disposed) return
+    if (this.sessions === null) {
+      this.resolveSessions()
+      return
+    }
+    this.sample(this.sessions)
+  }
+
+  private resolveSessions(): void {
+    if (this.sessions !== null || this.disposed) return
+    let sessions: SessionsLike | undefined
+    try {
+      sessions = this.ctx.sessions
+    } catch {
+      sessions = undefined
+    }
+    if (sessions === undefined) return
+    this.sessions = sessions
+    this.service.setBridgeState('bound')
+    this.listDispose = sessions.list.subscribe(() => {
+      this.rebind(sessions)
+    })
+    this.rebind(sessions)
   }
 
   private rebind(sessions: SessionsLike): void {
@@ -178,7 +206,7 @@ export class SessionWhaleObserver {
       this.knownPlanActive = undefined
       this.transient = null
       if (current === undefined) {
-        this.service.setActivity({ mood: 'idle', intensity: 0 })
+        this.applyActivity({ mood: 'idle', intensity: 0 })
       }
     }
     if (current === undefined) return
@@ -195,6 +223,11 @@ export class SessionWhaleObserver {
     this.lastActivityAt = Date.now()
     this.lastErrorSeq = latestErrorSeq(snapshot.nodes)
     this.lastAgentError = snapshot.lastAgentError ?? null
+    console.debug('[ui-whale-pet] session bridge bound', current, {
+      running: snapshot.running,
+      calls: snapshot.runningCalls.length,
+      partial: snapshot.partial !== null,
+    })
   }
 
   private sample(sessions: SessionsLike): void {
@@ -254,18 +287,38 @@ export class SessionWhaleObserver {
     // Transient moods win until they expire.
     if (this.transient !== null) {
       if (now < this.transient.until) {
-        this.service.setActivity({ mood: this.transient.mood, intensity: 1 })
+        this.applyActivity({ mood: this.transient.mood, intensity: 1 })
         return
       }
       this.transient = null
     }
 
-    this.service.setActivity(deriveWhaleActivity(now, {
+    const mood = deriveWhaleActivity(now, {
       active,
       running: snapshot.running,
       turnStartedAt: this.turnStartedAt,
       lastActivityAt: this.lastActivityAt,
-    }))
+    })
+
+    // Thinking/working/focused keeps a slow stream of bubbles so the
+    // activity is visible even while the pet is resting at the edge.
+    if (
+      (mood.mood === 'thinking' || mood.mood === 'working' || mood.mood === 'focused')
+      && now - this.lastActivityBubbleAt >= ACTIVE_BUBBLE_MS
+    ) {
+      this.lastActivityBubbleAt = now
+      this.service.playEffect('bubble')
+    }
+
+    this.applyActivity(mood)
+  }
+
+  private applyActivity(activity: WhaleActivity): void {
+    if (this.lastMood !== activity.mood) {
+      console.debug('[ui-whale-pet] mood ->', activity.mood)
+      this.lastMood = activity.mood
+    }
+    this.service.setActivity(activity)
   }
 
   private seedProjections(): void {
@@ -317,6 +370,7 @@ export const SESSION_BRIDGE_THRESHOLDS = Object.freeze({
   IDLE_SLEEP_MS,
   CELEBRATE_MS,
   ERROR_MS,
+  ACTIVE_BUBBLE_MS,
 })
 
 export type { WhaleEffectKind }

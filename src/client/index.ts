@@ -13,8 +13,8 @@ export { WhalePetService } from './runtime/whale-pet-service.ts'
 export type { WhaleActivity, WhaleEffect, WhaleEffectKind, WhaleMood } from './activity.ts'
 export type { WhaleExternalState, WhaleScene } from './whale-scene.ts'
 
-/** Required service: the typed client slot registry. */
-export const inject = ['slots']
+/** Required services: slot registry plus the sessions bridge. */
+export const inject = ['slots', 'sessions']
 
 /** Mount the runtime service and register one additive shell-overlay entry. */
 export function apply(ctx: ClientContext): void {

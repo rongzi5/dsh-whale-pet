@@ -174,7 +174,22 @@ export class WhaleMotionController {
 
   /** Update the session-driven mood. */
   public setActivity(activity: WhaleActivity): void {
+    const previous = this.activity.mood
     this.activity = activity
+    const activeNow = activity.mood === 'thinking' || activity.mood === 'working' || activity.mood === 'focused' || activity.mood === 'celebrating'
+    const activeBefore = previous === 'thinking' || previous === 'working' || previous === 'focused' || previous === 'celebrating'
+
+    if (activeNow && !activeBefore && this.mode !== 'dragging' && this.mode !== 'patrol') {
+      // Wake the pet and start a short patrol soon so session activity is
+      // visible instead of only changing the in-place swim frequency.
+      this.mode = 'idle'
+      this.moveTime = 0
+      this.vx = 0
+      this.vy = 0
+      this.nextPatrol = 0.35 + this.random() * 0.4
+      this.lookTime = Math.max(this.lookTime, 1.2)
+    }
+
     if (activity.mood === 'sleeping' && this.mode === 'patrol') {
       this.mode = 'settling'
       this.moveTime = 0
@@ -319,7 +334,8 @@ export class WhaleMotionController {
     this.vx = 0
     this.vy = 0
     this.angleTarget = 0
-    this.nextPatrol = 45 + this.random() * 45
+    const active = this.activity.mood === 'thinking' || this.activity.mood === 'working' || this.activity.mood === 'focused' || this.activity.mood === 'celebrating'
+    this.nextPatrol = active ? 5 + this.random() * 5 : 45 + this.random() * 45
   }
 
   private stepSettling(dt: number): void {

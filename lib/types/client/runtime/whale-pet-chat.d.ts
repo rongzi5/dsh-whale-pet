@@ -71,5 +71,6 @@ export interface WhaleTaskRequest {
     prompt: string;
     note?: string;
 }
+export declare function taskIntent(input: string): string | null;
 /** Extract `[TASK] <description>` from a pet reply (first line wins). */
 export declare function extractTaskRequest(reply: string): WhaleTaskRequest | null;

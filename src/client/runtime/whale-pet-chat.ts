@@ -180,10 +180,12 @@ export class WhalePetChat {
       const reply = await this.transport.postChat(buildChatMessages(memory, meta, text, progress), options)
       // The pet may decide the request needs real execution: it replies with
       // a [TASK] marker, which dispatches a subagent conversation instead of
-      // answering directly.
+      // answering directly. A client-side intent fallback catches execution
+      // requests the pet answered directly anyway (e.g. "写个冒泡排序").
       const task = extractTaskRequest(reply)
-      if (task !== null && this.transport.runTask !== undefined) {
-        await this.dispatchTask(memory, text, task, options)
+      const intent = taskIntent(text)
+      if (this.transport.runTask !== undefined && (task !== null || intent !== null)) {
+        await this.dispatchTask(memory, text, task ?? { prompt: intent! }, options)
         return
       }
       const cleanReply = stripMemoryMarkers(reply)
@@ -237,6 +239,18 @@ export class WhalePetChat {
 export interface WhaleTaskRequest {
   prompt: string
   note?: string
+}
+
+/**
+ * Client-side intent fallback: strong execution verbs in the user's request
+ * ("写个…/实现…/修复…/跑一下…") dispatch a subagent task even when the pet
+ * answered directly. Returns the user text as the task prompt, or null.
+ */
+const TASK_INTENT_PATTERN = /(写个|写一个|写一段|帮我写|帮我做|帮我实现|实现|编写|创建|开发|修复|重构|部署|跑一下|运行|执行|查一下|查资料|研究|调研|测试一下|调试|debug|fix|implement|create|write)/i
+
+export function taskIntent(input: string): string | null {
+  if (TASK_INTENT_PATTERN.test(input)) return input.trim()
+  return null
 }
 
 /** Extract `[TASK] <description>` from a pet reply (first line wins). */

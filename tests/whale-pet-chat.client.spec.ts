@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { WhalePetService } from '../src/client/runtime/whale-pet-service.ts'
-import { WhalePetChat, CHAT_FAILURE_BUBBLE, extractTaskRequest, loadChatPreferences, saveChatPreferences } from '../src/client/runtime/whale-pet-chat.ts'
+import { WhalePetChat, CHAT_FAILURE_BUBBLE, extractTaskRequest, loadChatPreferences, saveChatPreferences, taskIntent } from '../src/client/runtime/whale-pet-chat.ts'
 import { loadWhaleMemory } from '../src/client/memory.ts'
 import type { StorageLike } from '../src/client/persistence.ts'
 import type { WhaleChatMessage, WhaleChatTransport, WhaleModelCatalog } from '../src/client/llm.ts'
@@ -381,6 +381,40 @@ describe('WhalePetChat task dispatch', () => {
     await chat.ask('写个脚本')
     // Without runTask the marker stays visible as the pet's bubble text.
     expect(service.getSnapshot().recap?.text).toContain('[TASK]')
+    service.dispose()
+  })
+})
+
+describe('WhalePetChat task intent fallback', () => {
+  it('detects execution intent even when the pet answers directly', () => {
+    expect(taskIntent('写个冒泡排序')).toBe('写个冒泡排序')
+    expect(taskIntent('帮我实现一个斐波那契')).toBe('帮我实现一个斐波那契')
+    expect(taskIntent('今天天气怎么样')).toBeNull()
+    expect(taskIntent('鲸鲸你叫什么')).toBeNull()
+  })
+
+  it('dispatches the user request verbatim when intent matches but no [TASK] came back', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const taskCalls: Array<{ prompt: string }> = []
+    const transport: WhaleChatTransport = {
+      async postChat(): Promise<string> {
+        // The pet answered directly (no [TASK] marker).
+        return '搞定！这是冒泡排序的代码：...'
+      },
+      async listModels(): Promise<WhaleModelCatalog> {
+        return FAKE_CATALOG
+      },
+      async runTask(prompt): Promise<{ output: string; sessionId: string; completed: boolean }> {
+        taskCalls.push({ prompt })
+        return { output: '写好了，bubble_sort.py 已保存', sessionId: 'child-2', completed: true }
+      },
+    }
+    const chat = new WhalePetChat(service, storage, transport)
+    await chat.ask('写个冒泡排序')
+    expect(taskCalls).toHaveLength(1)
+    expect(taskCalls[0]?.prompt).toBe('写个冒泡排序')
+    expect(service.getSnapshot().recap?.text).toContain('bubble_sort.py')
     service.dispose()
   })
 })

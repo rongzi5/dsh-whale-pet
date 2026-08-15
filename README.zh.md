@@ -137,7 +137,7 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
 ```sh
 npm install            # 开发工具链：typescript、esbuild、vitest、three 等
 npm run build          # tsc 声明 + esbuild host/client 产物 → lib/
-npm test               # vitest 套件（136 个用例）
+npm test               # vitest 套件（138 个用例）
 node install-profile.mjs web
 ```
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { WhalePetService } from '../src/client/runtime/whale-pet-service.ts'
-import { WhalePetChat, CHAT_FAILURE_BUBBLE, loadChatPreferences, saveChatPreferences } from '../src/client/runtime/whale-pet-chat.ts'
+import { WhalePetChat, CHAT_FAILURE_BUBBLE, extractTaskRequest, loadChatPreferences, saveChatPreferences } from '../src/client/runtime/whale-pet-chat.ts'
 import { loadWhaleMemory } from '../src/client/memory.ts'
 import type { StorageLike } from '../src/client/persistence.ts'
 import type { WhaleChatMessage, WhaleChatTransport, WhaleModelCatalog } from '../src/client/llm.ts'
@@ -329,6 +329,58 @@ describe('WhalePetService external mood', () => {
     // The click recap cycle still only sees session events + the name entry.
     service.nextRecap()
     expect(service.getSnapshot().recap?.text).toBe('历史事件')
+    service.dispose()
+  })
+})
+
+describe('WhalePetChat task dispatch', () => {
+  it('extracts [TASK] markers from pet replies', () => {
+    expect(extractTaskRequest('这个有点难\n[TASK] 帮我写一个排序算法\n附注')).toEqual({ prompt: '帮我写一个排序算法', note: '附注' })
+    expect(extractTaskRequest('今天天气不错')).toBeNull()
+    expect(extractTaskRequest('[TASK]   ')).toBeNull()
+  })
+
+  it('dispatches a subagent task when the pet emits [TASK]', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const taskCalls: Array<{ prompt: string }> = []
+    const transport: WhaleChatTransport = {
+      async postChat(): Promise<string> {
+        return '这需要真跑一下\n[TASK] 写一个能算斐波那契的脚本'
+      },
+      async listModels(): Promise<WhaleModelCatalog> {
+        return FAKE_CATALOG
+      },
+      async runTask(prompt): Promise<{ output: string; sessionId: string; completed: boolean }> {
+        taskCalls.push({ prompt })
+        return { output: '写好了，fib.py 输出 55', sessionId: 'child-1', completed: true }
+      },
+    }
+    const chat = new WhalePetChat(service, storage, transport)
+    await chat.ask('帮我写个斐波那契')
+    expect(taskCalls).toHaveLength(1)
+    expect(taskCalls[0]?.prompt).toContain('写一个能算斐波那契的脚本')
+    expect(service.getSnapshot().recap?.text).toContain('写好了，fib.py 输出 55')
+    // The dispatch result is remembered as a turn.
+    expect(loadWhaleMemory(storage).turns.at(-1)?.text).toContain('fib.py')
+    service.dispose()
+  })
+
+  it('falls back to the plain reply when no task transport exists', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const transport: WhaleChatTransport = {
+      async postChat(): Promise<string> {
+        return '这需要真跑一下\n[TASK] 写个脚本'
+      },
+      async listModels(): Promise<WhaleModelCatalog> {
+        return FAKE_CATALOG
+      },
+    }
+    const chat = new WhalePetChat(service, storage, transport)
+    await chat.ask('写个脚本')
+    // Without runTask the marker stays visible as the pet's bubble text.
+    expect(service.getSnapshot().recap?.text).toContain('[TASK]')
     service.dispose()
   })
 })

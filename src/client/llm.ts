@@ -59,14 +59,32 @@ export interface WhaleChatTransport {
    * transports degrade to the observer's coarse snapshot.
    */
   getProgress?(sessionId: string): Promise<WhaleSessionProgress>
+  /**
+   * Optional subagent task dispatch: spawn a real child conversation in the
+   * workspace and wait for its final output.
+   */
+  runTask?(prompt: string, label?: string): Promise<WhaleTaskResult>
+}
+
+/** Result of a pet-dispatched subagent task. */
+export interface WhaleTaskResult {
+  /** The child agent's final output text. */
+  output: string
+  /** The child session id — openable in the DSH UI. */
+  sessionId: string
+  /** Whether the child finished within the host timeout. */
+  completed: boolean
 }
 
 export const CHAT_PROXY_PATH = '/api/whale-pet/chat'
 export const MODELS_PROXY_PATH = '/api/whale-pet/models'
 export const PROGRESS_PROXY_PATH = '/api/whale-pet/progress'
+export const TASK_PROXY_PATH = '/api/whale-pet/task'
 export const CHAT_TIMEOUT_MS = 60_000
 /** Fine progress is best-effort: keep the chat snappy when it is slow. */
 export const PROGRESS_TIMEOUT_MS = 1_500
+/** Task dispatch may run a real child agent; give it the host timeout. */
+export const TASK_TIMEOUT_MS = 250_000
 
 async function proxyJson<T>(path: string, init: RequestInit, timeoutMs = CHAT_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
@@ -108,6 +126,18 @@ export const localChatTransport: WhaleChatTransport = {
       `${PROGRESS_PROXY_PATH}?session=${encodeURIComponent(sessionId)}`,
       { method: 'GET' },
       PROGRESS_TIMEOUT_MS,
+    )
+  },
+
+  async runTask(prompt, label): Promise<WhaleTaskResult> {
+    return proxyJson<WhaleTaskResult>(
+      TASK_PROXY_PATH,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt, ...(label !== undefined ? { label } : {}) }),
+      },
+      TASK_TIMEOUT_MS,
     )
   },
 }

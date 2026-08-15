@@ -62,5 +62,14 @@ export declare class WhalePetChat {
     listModels(): Promise<WhaleModelCatalog>;
     /** Run one chat turn; safe to call while busy (bubbles a gentle nudge). */
     ask(input: string, options?: WhaleChatOptions): Promise<void>;
+    /** Dispatch a [TASK] to a subagent conversation and report the outcome. */
+    private dispatchTask;
     private meta;
 }
+/** A task request the pet emitted instead of a direct answer. */
+export interface WhaleTaskRequest {
+    prompt: string;
+    note?: string;
+}
+/** Extract `[TASK] <description>` from a pet reply (first line wins). */
+export declare function extractTaskRequest(reply: string): WhaleTaskRequest | null;

@@ -20,10 +20,14 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { SessionStore } from '@deepseek-ai/dsh-session'
 import type { JobRegistry } from '@deepseek-ai/dsh-jobs'
+import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
+import type { AgentRegistry } from '@deepseek-ai/dsh-agent'
+import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
 import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { createChatProxyHandler, directBackend, resolveChatProxyConfig, type WhaleChatBackend } from './chat-proxy.ts'
 import { LlmBackend } from './llm-backend.ts'
 import { createProgressHandler } from './session-progress.ts'
+import { createTaskHandler } from './subagent-task.ts'
 
 /** Optional per-deployment overrides; env vars are the fallback. */
 export interface WhalePetHostConfig {
@@ -37,12 +41,12 @@ export interface WhalePetHostConfig {
 
 /**
  * Required services. `webServer` hosts the routes; `llm`, `credentials`,
- * `sessions` and `jobs` are declared so the proxy can use the DSH LLM
- * service, credentials, session store and job registry — cordis forbids
- * accessing undeclared services from plugin scope, so a try/catch alone
- * silently degrades to the direct-upstream fallback.
+ * `sessions`, `jobs`, `subagents` and `agents` are declared so the proxy can
+ * use the DSH LLM service, credentials, session store, job registry and
+ * subagent machinery — cordis forbids accessing undeclared services from
+ * plugin scope, so a try/catch alone silently degrades to the fallback.
  */
-export const inject = ['webServer', 'llm', 'credentials', 'sessions', 'jobs']
+export const inject = ['webServer', 'llm', 'credentials', 'sessions', 'jobs', 'subagents', 'agents']
 
 /** Read `ctx.credentials` defensively (declared via inject, still guarded). */
 function safeCredentials(ctx: Context): CredentialProvider | null {
@@ -80,6 +84,33 @@ function safeJobs(ctx: Context): JobRegistry | null {
   }
 }
 
+/** Read `ctx.subagents` defensively. */
+function safeSubagents(ctx: Context): SubagentRuntime | null {
+  try {
+    return ctx.subagents ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Read `ctx.agents` defensively. */
+function safeAgents(ctx: Context): AgentRegistry | null {
+  try {
+    return ctx.agents ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Read `ctx.workspaceRegistry` defensively. */
+function safeWorkspaces(ctx: Context): WorkspaceRegistry | null {
+  try {
+    return ctx.workspaceRegistry ?? null
+  } catch {
+    return null
+  }
+}
+
 /** Mount the chat proxy routes. */
 export function apply(ctx: Context, config?: WhalePetHostConfig): void {
   const credentials = safeCredentials(ctx)
@@ -109,6 +140,9 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
   const backend: WhaleChatBackend = llm !== null ? new LlmBackend(llm) : directBackend(resolveDirect)
   const sessions = safeSessions(ctx)
   const jobs = safeJobs(ctx)
+  const subagents = safeSubagents(ctx)
+  const agents = safeAgents(ctx)
+  const workspaces = safeWorkspaces(ctx)
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
@@ -123,6 +157,15 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
       path: '/api/whale-pet/progress',
       handler: createProgressHandler(sessions, jobs),
     }), 'ui-whale-pet: session progress')
+  }
+
+  // Subagent task dispatch: the pet can spawn a real child conversation.
+  if (subagents !== null && agents !== null) {
+    ctx.effect(() => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/whale-pet/task',
+      handler: createTaskHandler(subagents, agents, () => workspaces?.list()[0]?.path),
+    }), 'ui-whale-pet: subagent task')
   }
 
   void Promise.resolve(backend.available()).then(configured => {

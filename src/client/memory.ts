@@ -182,6 +182,7 @@ export function buildSystemPrompt(
     ...persona,
     `关于用户的记忆：\n${memory.facts.length > 0 ? memory.facts.map(fact => `- ${fact}`).join('\n') : '（还没有关于用户的记忆）'}`,
     '如果用户告诉了你值得长期记住的事实（名字、喜好、习惯、安排等），在你的回复末尾单独一行输出「[记住] 事实内容」。',
+    '如果用户请求的是需要实际执行的任务（写代码、跑命令、查资料、做研究、修 bug 等），不要尝试直接回答，而是在回复开头单独一行输出「[TASK] <任务描述>」，描述要完整清晰（可以附带你已知的上下文）；闲聊或简单问答则正常回答。',
   ]
   const blocks = [...base]
   if (memory.summary !== undefined) {

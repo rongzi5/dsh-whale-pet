@@ -96,6 +96,19 @@ old turns are not dropped — they are **compacted** into a capped summary
 (`summary`, 400 chars) so long conversations keep a coarse digest of what
 was discussed.
 
+### Task dispatch (subagent)
+
+When the user asks the pet for something that needs **real execution**
+(writing code, running commands, research, fixing bugs…), the pet does not
+fake an answer: it replies with a `[TASK] <description>` marker, the client
+calls `POST /api/whale-pet/task`, and the host dispatches a **real subagent
+conversation** through `ctx.subagents` (the same machinery as the agent's
+`subagent` tool: its own session, tools and results). The child appears in
+the DSH subagent view so the user can open it directly; when it finishes the
+pet summarizes the outcome in its bubble (on timeout it reports the child
+session id). The parent is the active agent (`currentInitiator`); when idle,
+a fresh agent is created as the parent identity.
+
 Debug: `GET /api/whale-pet/health` reports `{ ok, configured }`.
 
 ## Session integration
@@ -152,7 +165,7 @@ The repository builds standalone (no pnpm workspace, no dsh checkout):
 ```sh
 npm install            # dev toolchain: typescript, esbuild, vitest, three…
 npm run build          # tsc declarations + esbuild host/client bundles → lib/
-npm test               # vitest suite (128 tests)
+npm test               # vitest suite (136 tests)
 node install-profile.mjs web
 ```
 

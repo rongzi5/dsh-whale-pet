@@ -76,6 +76,16 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
 旧轮次不会直接丢弃，而是**压缩**进一条有上限的摘要（`summary`，400 字符）继续保留
 "早前聊过什么"的粗粒度记忆。
 
+### 任务派发（subagent）
+
+当用户向桌宠请求需要**实际执行**的任务（写代码、跑命令、查资料、修 bug 等）时，桌宠
+不会硬答，而是回复 `[TASK] <任务描述>` 标记；客户端识别后调用
+`POST /api/whale-pet/task`，host 侧通过 `ctx.subagents` **派遣一个真正的子代理会话**
+（与 agent 的 `subagent` 工具同一条机制：独立会话、独立工具调用、结果独立保存）。
+子代理会话出现在 DSH 的 subagent 视图里，用户可以直接打开查看；完成后桌宠在气泡里
+总结结果（超时则报告子代理会话 id）。parent 取当前活动的 agent（`currentInitiator`），
+空闲时自动创建一个新 agent 作为 parent。
+
 调试：`GET /api/whale-pet/health` 返回 `{ ok, configured }`。
 
 ## 会话联动
@@ -127,7 +137,7 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
 ```sh
 npm install            # 开发工具链：typescript、esbuild、vitest、three 等
 npm run build          # tsc 声明 + esbuild host/client 产物 → lib/
-npm test               # vitest 套件（128 个用例）
+npm test               # vitest 套件（136 个用例）
 node install-profile.mjs web
 ```
 

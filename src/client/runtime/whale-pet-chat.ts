@@ -21,6 +21,7 @@ import {
   rememberFacts,
   saveWhaleMemory,
   stripMemoryMarkers,
+  type WhaleMemory,
 } from '../memory.ts'
 import { localChatTransport, type WhaleChatOptions, type WhaleChatTransport, type WhaleModelCatalog } from '../llm.ts'
 import { progressToText, type WhaleSessionProgress } from '../progress.ts'
@@ -177,6 +178,14 @@ export class WhalePetChat {
       // the coarse projection snapshot is the fallback.
       const progress = await this.probeProgress()
       const reply = await this.transport.postChat(buildChatMessages(memory, meta, text, progress), options)
+      // The pet may decide the request needs real execution: it replies with
+      // a [TASK] marker, which dispatches a subagent conversation instead of
+      // answering directly.
+      const task = extractTaskRequest(reply)
+      if (task !== null && this.transport.runTask !== undefined) {
+        await this.dispatchTask(memory, text, task, options)
+        return
+      }
       const cleanReply = stripMemoryMarkers(reply)
       const next = rememberFacts(memory, extractFacts(reply))
       const persisted = appendTurn(appendTurn(next, 'user', text), 'assistant', cleanReply)
@@ -192,8 +201,50 @@ export class WhalePetChat {
     }
   }
 
+  /** Dispatch a [TASK] to a subagent conversation and report the outcome. */
+  private async dispatchTask(
+    memory: WhaleMemory,
+    userText: string,
+    task: { prompt: string; note?: string },
+    options?: WhaleChatOptions,
+  ): Promise<void> {
+    if (this.transport.runTask === undefined) return
+    this.service.showBubble('这个有点难，我派个小助手去干活，稍等～', 8_000)
+    this.service.playEffect('bubble')
+    try {
+      const result = await this.transport.runTask(task.prompt, '鲸鲸的任务')
+      const summary = result.completed
+        ? `搞定！${result.output.slice(0, 900)}`
+        : `任务还在跑（会话 ${result.sessionId}），我拿到的是：${result.output.slice(0, 300)}`
+      const next = rememberFacts(memory, [])
+      const persisted = appendTurn(appendTurn(next, 'user', userText), 'assistant', summary)
+      saveWhaleMemory(this.storage, persisted)
+      this.service.showBubble(summary, 20_000)
+    } catch (error) {
+      this.service.setExternalMood('error', Date.now() + 3_000)
+      this.service.playErrorReaction(Date.now() + 3_000)
+      this.service.showBubble('派任务失败了……' + (error instanceof Error ? error.message.slice(0, 100) : ''), 6_000)
+    }
+  }
+
   private meta(): { name: string; days: number } {
     const state = loadWhalePetState(this.storage)
     return { name: state.name, days: daysSince(state.since) }
   }
+}
+
+/** A task request the pet emitted instead of a direct answer. */
+export interface WhaleTaskRequest {
+  prompt: string
+  note?: string
+}
+
+/** Extract `[TASK] <description>` from a pet reply (first line wins). */
+export function extractTaskRequest(reply: string): WhaleTaskRequest | null {
+  const match = /^\s*\[TASK\]\s*([^\n]+)/m.exec(reply)
+  if (match === null) return null
+  const prompt = match[1]?.trim()
+  if (prompt === undefined || prompt === '') return null
+  const note = reply.slice((match.index ?? 0) + match[0].length).trim()
+  return { prompt, ...(note !== '' ? { note } : {}) }
 }

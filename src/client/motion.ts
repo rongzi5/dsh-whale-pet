@@ -377,7 +377,9 @@ export class WhaleMotionController {
     const baseX = this.loopBaseX()
     const baseY = this.loopBaseY()
     this.loopStartAngle = Math.atan2(this.y - baseY, this.x - baseX)
-    this.loopStartYaw = Math.PI - this.loopStartAngle
+    // The tangent of the CCW ellipse is startAngle + π/2; yaw = π - tangent,
+    // so the model starts facing the actual swimming direction.
+    this.loopStartYaw = Math.PI / 2 - this.loopStartAngle
     this.loopDuration = 6.5 + this.random() * 1.0
     this.moveTime = 0
     this.mode = 'loop'

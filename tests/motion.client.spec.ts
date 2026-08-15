@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PET_WIDTH, WhaleMotionController } from '../src/client/motion.ts'
+import { PET_HEIGHT, PET_WIDTH, WhaleMotionController } from '../src/client/motion.ts'
 
 const fixedRandom = (): number => 0
 
@@ -85,6 +85,11 @@ describe('WhaleMotionController', () => {
     const motion = new WhaleMotionController(1440, 900, fixedRandom)
     motion.step(1 / 60)
     motion.celebrate()
+
+    // At entry the model must face the ellipse tangent, not the radius.
+    const first = motion.step(1 / 60)
+    const startAngle = Math.atan2(644 - (450 - PET_HEIGHT * 0.5), 1096 - (720 - PET_WIDTH * 0.5))
+    expect(first.yaw).toBeCloseTo(Math.PI / 2 - startAngle, 3)
 
     let minX = Number.POSITIVE_INFINITY
     let maxX = Number.NEGATIVE_INFINITY

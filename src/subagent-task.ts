@@ -108,6 +108,9 @@ export function createTaskHandler(
   defaultPreset: () => string | undefined = () => undefined,
   defaultModel: () => { provider?: string; model?: string } | undefined = () => undefined,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  // Cached fallback parent (created once, kept alive so its children stay in
+  // the session store and the workspace session list).
+  let fallbackParent: Awaited<ReturnType<AgentRegistry['create']>>['agent'] | null = null
   return async (req, res): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     if (url.pathname !== '/api/whale-pet/task') {
@@ -138,44 +141,42 @@ export function createTaskHandler(
       return
     }
 
-    let parent = agents.currentInitiator() ?? undefined
-    let parentHandle: { dispose(): Promise<void> } | null = null
+    // A cached fallback parent keeps dispatched child conversations alive in
+    // the session store after the run settles — disposing the parent cascades
+    // into the children and removes them from the workspace session list.
+    // It is created once (only when no initiator is active) and reused.
+    const activeParent = agents.currentInitiator() ?? undefined
+    if (activeParent === undefined && fallbackParent === null) {
+      const cwd = callerSessionId !== undefined && sessions !== null
+        ? (() => {
+          try {
+            return sessions.get(SessionId(callerSessionId))?.header.cwd
+          } catch {
+            return undefined
+          }
+        })()
+        : undefined
+      const resolvedCwd = cwd ?? workspaceRoot()
+      const preset = defaultPreset()
+      const model = defaultModel()
+      const agentOptions = model?.provider !== undefined && model?.model !== undefined
+        ? { provider: model.provider, model: model.model }
+        : undefined
+      const handle = await agents.create({
+        sessionId: SessionId(randomUUID()),
+        meta: {
+          ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
+          ...(preset !== undefined ? { agentPreset: preset } : {}),
+          origin: 'subagent',
+          delegationDepth: 1,
+        },
+        ...(agentOptions !== undefined ? { agentOptions } : {}),
+      })
+      fallbackParent = handle.agent
+    }
+    const parent = activeParent ?? fallbackParent!
+    const signal = AbortSignal.timeout(TASK_TIMEOUT_MS)
     try {
-      if (parent === undefined) {
-        // No active agent: create a fresh parent identity in the caller's
-        // workspace (cwd from the caller session header when known, so the
-        // child session lands in the right workspace directory and shows in
-        // the session list). The deployment's default agent preset is used so
-        // the child actually has tools and a model.
-        const cwd = callerSessionId !== undefined && sessions !== null
-          ? (() => {
-            try {
-              return sessions.get(SessionId(callerSessionId))?.header.cwd
-            } catch {
-              return undefined
-            }
-          })()
-          : undefined
-        const resolvedCwd = cwd ?? workspaceRoot()
-        const preset = defaultPreset()
-        const model = defaultModel()
-        const agentOptions = model?.provider !== undefined && model?.model !== undefined
-          ? { provider: model.provider, model: model.model }
-          : undefined
-        const handle = await agents.create({
-          sessionId: SessionId(randomUUID()),
-          meta: {
-            ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
-            ...(preset !== undefined ? { agentPreset: preset } : {}),
-            origin: 'subagent',
-            delegationDepth: 1,
-          },
-          ...(agentOptions !== undefined ? { agentOptions } : {}),
-        })
-        parentHandle = handle
-        parent = handle.agent
-      }
-      const signal = AbortSignal.timeout(TASK_TIMEOUT_MS)
       const run = await subagents.start(provider, {
         label,
         prompt: [{ type: 'text', text: taskPersona(prompt) }],
@@ -229,8 +230,8 @@ export function createTaskHandler(
         debug: { stopReason, eventCount, eventTypes, turnEndReason },
       }
       sendJson(res, 200, response)
-    } finally {
-      await parentHandle?.dispose().catch(() => {})
+    } catch (error) {
+      sendJson(res, 502, { error: error instanceof Error ? error.message.slice(0, 300) : String(error) })
     }
   }
 }

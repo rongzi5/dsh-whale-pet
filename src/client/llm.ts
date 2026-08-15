@@ -83,8 +83,9 @@ export const TASK_PROXY_PATH = '/api/whale-pet/task'
 export const CHAT_TIMEOUT_MS = 60_000
 /** Fine progress is best-effort: keep the chat snappy when it is slow. */
 export const PROGRESS_TIMEOUT_MS = 1_500
-/** Task dispatch may run a real child agent; give it the host timeout. */
-export const TASK_TIMEOUT_MS = 250_000
+/** Task dispatch may run a real child agent; outlast the host timeout so the
+ * "still running" response (with the child session id) reaches the pet. */
+export const TASK_TIMEOUT_MS = 70_000
 
 async function proxyJson<T>(path: string, init: RequestInit, timeoutMs = CHAT_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()

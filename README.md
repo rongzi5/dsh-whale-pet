@@ -105,7 +105,7 @@ calls `POST /api/whale-pet/task`, and the host dispatches a **real subagent
 conversation** through `ctx.subagents` (the same machinery as the agent's
 `subagent` tool: its own session, tools and results). The child appears in
 the DSH subagent view so the user can open it directly; when it finishes the
-pet summarizes the outcome in its bubble (on timeout it reports the child
+pet summarizes the outcome in its bubble (on 1-min timeout it reports the child
 session id). The parent is the active agent (`currentInitiator`); when idle,
 a fresh agent is created as the parent identity.
 

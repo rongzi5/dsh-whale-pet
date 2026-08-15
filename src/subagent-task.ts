@@ -16,7 +16,7 @@ import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 
 /** How long a pet-dispatched task may run before reporting "still running". */
-export const TASK_TIMEOUT_MS = 240_000
+export const TASK_TIMEOUT_MS = 60_000
 /** Final-output text cap returned to the pet bubble. */
 export const TASK_OUTPUT_LIMIT = 1_200
 

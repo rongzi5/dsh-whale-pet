@@ -13,7 +13,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent';
 import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent';
 /** How long a pet-dispatched task may run before reporting "still running". */
-export declare const TASK_TIMEOUT_MS = 240000;
+export declare const TASK_TIMEOUT_MS = 60000;
 /** Final-output text cap returned to the pet bubble. */
 export declare const TASK_OUTPUT_LIMIT = 1200;
 export interface TaskRequest {

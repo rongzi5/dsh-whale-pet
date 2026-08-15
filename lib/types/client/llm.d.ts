@@ -76,7 +76,8 @@ export declare const TASK_PROXY_PATH = "/api/whale-pet/task";
 export declare const CHAT_TIMEOUT_MS = 60000;
 /** Fine progress is best-effort: keep the chat snappy when it is slow. */
 export declare const PROGRESS_TIMEOUT_MS = 1500;
-/** Task dispatch may run a real child agent; give it the host timeout. */
-export declare const TASK_TIMEOUT_MS = 250000;
+/** Task dispatch may run a real child agent; outlast the host timeout so the
+ * "still running" response (with the child session id) reaches the pet. */
+export declare const TASK_TIMEOUT_MS = 70000;
 /** Default transport: same-origin fetch to the host-side chat proxy. */
 export declare const localChatTransport: WhaleChatTransport;

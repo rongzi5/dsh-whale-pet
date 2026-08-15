@@ -140,6 +140,7 @@ describe('SessionWhaleObserver', () => {
   it('shows a sweat effect and error mood for tool failures', () => {
     const { conversation, observer, service } = setup()
     observer.start()
+    vi.advanceTimersByTime(3_000)
 
     conversation.set({
       running: true,
@@ -152,6 +153,26 @@ describe('SessionWhaleObserver', () => {
 
     expect(service.getSnapshot().activity.mood).toBe('error')
     expect(service.getSnapshot().effects.some(effect => effect.kind === 'sweat')).toBe(true)
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('absorbs late-arriving historical errors right after binding', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+
+    conversation.set({
+      running: false,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'tool-result', seq: 9, isError: true }],
+      lastAgentError: 'old error',
+    })
+    vi.advanceTimersByTime(2_600)
+
+    expect(service.getSnapshot().activity.mood).toBe('idle')
+    expect(service.getSnapshot().effects.some(effect => effect.kind === 'sweat')).toBe(false)
 
     observer.dispose()
     service.dispose()

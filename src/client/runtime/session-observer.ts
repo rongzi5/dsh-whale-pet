@@ -18,6 +18,7 @@ const IDLE_SLEEP_MS = 60_000
 const CELEBRATE_MS = 5_000
 const ERROR_MS = 4_000
 const ACTIVE_BUBBLE_MS = 3_500
+const ERROR_SETTLE_MS = 2_500
 
 export interface ObservableLike<T> {
   getSnapshot(): T
@@ -127,6 +128,7 @@ export class SessionWhaleObserver {
   private transient: TransientMood | null = null
   private lastActivityBubbleAt = 0
   private lastMood: WhaleActivity['mood'] | null = null
+  private boundAt = 0
   private disposed = false
 
   public constructor(
@@ -205,6 +207,7 @@ export class SessionWhaleObserver {
       this.knownGoalPhase = undefined
       this.knownPlanActive = undefined
       this.transient = null
+      this.boundAt = 0
       if (current === undefined) {
         this.applyActivity({ mood: 'idle', intensity: 0 })
       }
@@ -218,6 +221,7 @@ export class SessionWhaleObserver {
     this.planFace = safeProjection(binding.session, 'plan')
     this.seedProjections()
     const snapshot = binding.session.getSnapshot()
+    this.boundAt = Date.now()
     this.wasRunning = snapshot.running
     this.turnStartedAt = snapshot.running ? Date.now() : 0
     this.lastActivityAt = Date.now()
@@ -251,16 +255,19 @@ export class SessionWhaleObserver {
     const active = snapshot.running || hasPartial || hasCalls
     if (active) this.lastActivityAt = now
 
-    // Tool/turn failures: react once per new failure node. `lastAgentError`
-    // can lag behind the node projection after a rebind, so the node seq is
-    // the single trigger authority.
+    // Tool/turn failures: react once per new failure node. History windows
+    // load asynchronously after binding, so the first ERROR_SETTLE_MS only
+    // absorb late-arriving old nodes without reacting to them.
     const errorSeq = latestErrorSeq(snapshot.nodes)
     const agentError = snapshot.lastAgentError ?? null
     if (errorSeq > this.lastErrorSeq) {
+      const settled = now - this.boundAt >= ERROR_SETTLE_MS
       this.lastErrorSeq = errorSeq
       this.lastAgentError = agentError
-      this.transient = { mood: 'error', until: now + ERROR_MS }
-      this.service.playEffect('sweat')
+      if (settled) {
+        this.transient = { mood: 'error', until: now + ERROR_MS }
+        this.service.playEffect('sweat')
+      }
     }
 
     // Turn boundaries: celebrate long completed turns, goals, and plans.
@@ -373,6 +380,7 @@ export const SESSION_BRIDGE_THRESHOLDS = Object.freeze({
   CELEBRATE_MS,
   ERROR_MS,
   ACTIVE_BUBBLE_MS,
+  ERROR_SETTLE_MS,
 })
 
 export type { WhaleEffectKind }

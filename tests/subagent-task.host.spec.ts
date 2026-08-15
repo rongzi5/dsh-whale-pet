@@ -68,10 +68,11 @@ describe('createTaskHandler', () => {
     try {
       const result = await httpPost(proxy.port, '/api/whale-pet/task', { prompt: '帮我写一个 hello.py' })
       expect(result.status).toBe(200)
-      expect(result.body).toEqual({
+      expect(result.body).toMatchObject({
         output: '任务完成：写了 hello.py',
         sessionId: 'child-session-1',
         completed: true,
+        debug: { stopReason: 'completed' },
       })
       expect(subagents.calls).toHaveLength(1)
       expect(subagents.calls[0]?.label).toBe('鲸鲸的任务')

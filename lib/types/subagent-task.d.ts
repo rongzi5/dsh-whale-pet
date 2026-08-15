@@ -30,6 +30,11 @@ export interface TaskResponse {
     sessionId: string;
     /** Whether the child finished within the timeout. */
     completed: boolean;
+    /** Diagnostic: how the child settled and how many events it produced. */
+    debug?: {
+        stopReason: string;
+        eventCount: number;
+    };
 }
 /** Bound body-size guard for task requests (64 KiB). */
 export declare const TASK_MAX_BODY_BYTES: number;

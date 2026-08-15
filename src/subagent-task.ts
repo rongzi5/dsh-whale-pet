@@ -35,6 +35,8 @@ export interface TaskResponse {
   sessionId: string
   /** Whether the child finished within the timeout. */
   completed: boolean
+  /** Diagnostic: how the child settled and how many events it produced. */
+  debug?: { stopReason: string; eventCount: number }
 }
 
 /** Extract the plain text from a result's content blocks. */
@@ -176,9 +178,33 @@ export function createTaskHandler(
       })
       let output = ''
       let completed = true
+      let stopReason = 'unknown'
+      let eventCount = 0
       try {
         const result = await run.result
+        stopReason = result.stopReason
         output = textOf(result.output).slice(0, TASK_OUTPUT_LIMIT)
+        const events = run.localAgent?.session.events ?? []
+        eventCount = events.length
+        if (output === '' && result.stopReason === 'error') {
+          // The child's turn errored without a final assistant text: surface
+          // the failure detail from the event log so the pet can report it.
+          for (const event of [...events].reverse()) {
+            const data = (event as { data?: Record<string, unknown> }).data ?? {}
+            if (event.type === 'tool/result' && (data as { error?: unknown }).error !== undefined) {
+              const error = (data as { error: { name?: string; code?: string } }).error
+              output = `子代理的工具出错：${error.name ?? ''} ${error.code ?? ''}`.trim()
+              break
+            }
+            if (event.type === 'turn/end') {
+              const reason = (data as { reason?: { kind?: string; failure?: { code?: string; message?: string } } }).reason
+              if (reason?.kind === 'error') {
+                output = `子代理回合出错：${reason.failure?.code ?? 'unknown'} ${reason.failure?.message ?? ''}`.trim().slice(0, 300)
+                break
+              }
+            }
+          }
+        }
       } catch (error) {
         completed = false
         output = error instanceof Error ? error.message : String(error)
@@ -187,6 +213,7 @@ export function createTaskHandler(
         output,
         sessionId: run.id,
         completed,
+        debug: { stopReason, eventCount },
       }
       sendJson(res, 200, response)
     } finally {

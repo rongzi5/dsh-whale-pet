@@ -189,6 +189,7 @@ export function WhalePet({ whalePet }: WhalePetProps): React.ReactElement {
         className={styles.pet}
         data-whale-activity={snapshot.activity.mood}
         data-whale-bridge={snapshot.bridge}
+        data-whale-tool={snapshot.currentTool ?? ''}
       >
         <span ref={shadowRef} className={styles.shadow} aria-hidden="true" />
         <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />

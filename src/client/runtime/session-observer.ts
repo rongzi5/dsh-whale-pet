@@ -8,7 +8,8 @@
  * the derivation logic can be unit-tested with plain fixtures.
  */
 
-import type { WhaleActivity, WhaleEffectKind } from '../activity.ts'
+import type { WhaleActivity, WhaleEffectKind, WhaleToolReaction } from '../activity.ts'
+import { classifyTool } from '../activity.ts'
 import { WhalePetService } from './whale-pet-service.ts'
 
 const POLL_MS = 200
@@ -122,6 +123,23 @@ function errorRecapText(mark: ErrorMark): string {
   return '工具调用失败'
 }
 
+interface RunningToolLike {
+  name: string
+  argsRaw: string | null
+}
+
+/** First running tool call's name and raw arguments; null when nothing runs. */
+function firstRunningTool(calls: readonly unknown[]): RunningToolLike | null {
+  for (const call of calls) {
+    if (typeof call !== 'object' || call === null) continue
+    const record = call as { name?: unknown; argsRaw?: unknown }
+    if (typeof record.name === 'string' && record.name !== '') {
+      return { name: record.name, argsRaw: typeof record.argsRaw === 'string' ? record.argsRaw : null }
+    }
+  }
+  return null
+}
+
 /**
  * Pure mood derivation, separated for tests.
  * @returns the non-transient mood for the sampled session state.
@@ -172,6 +190,7 @@ export class SessionWhaleObserver {
   private boundAt = 0
   private lastNodeCount = -1
   private userTyping = false
+  private lastTool: string | null = null
   private disposed = false
 
   public constructor(
@@ -316,6 +335,16 @@ export class SessionWhaleObserver {
     const hasCalls = snapshot.runningCalls.length > 0
     const active = snapshot.running || hasPartial || hasCalls
     if (active) this.lastActivityAt = now
+
+    // Tool reactions: surface the running tool's name and animation
+    // personality (head-sway for searches, dive for shells, happy tail for
+    // file writes) to the service.
+    const runningTool = firstRunningTool(snapshot.runningCalls)
+    const tool = runningTool?.name ?? null
+    if (tool !== this.lastTool) {
+      this.lastTool = tool
+      this.service.setCurrentTool(tool, runningTool === null ? 'none' : classifyTool(runningTool.name, runningTool.argsRaw ?? undefined))
+    }
 
     // Tool/turn failures: react once per new failure node. History windows
     // load asynchronously after binding, so late-arriving OLD nodes (time

@@ -11,7 +11,7 @@
  * persistence, session-driven emotions) extend the controller without
  * touching the view, while the view remains a thin overlay shell.
  */
-import { type WhaleActivity } from '../activity.ts';
+import { type WhaleActivity, type WhaleToolReaction } from '../activity.ts';
 import { WhaleMotionController } from '../motion.ts';
 /** DOM handles the view lends to the runtime for the lifetime of one mount. */
 export interface WhalePetTargets {
@@ -38,6 +38,7 @@ export declare class WhalePetController {
     private activity;
     private lastYaw;
     private hidden;
+    private toolReaction;
     constructor(motion?: WhaleMotionController);
     /**
      * Mount the runtime onto the view's DOM handles. Idempotent: a repeated
@@ -71,6 +72,8 @@ export declare class WhalePetController {
     setActivity(activity: WhaleActivity): void;
     /** Pause rendering and motion while the pet is hidden. */
     setHidden(hidden: boolean): void;
+    /** Animation personality of the currently running tool (service-owned). */
+    setToolReaction(reaction: WhaleToolReaction): void;
     /** Run the motion layer's longer celebration lap. */
     celebrate(): void;
     /** Latest rendered model yaw; used to anchor effects like bubbles. */

@@ -3,6 +3,7 @@ import {
   ACTIVE_MOODS,
   IDLE_ACTIVITY,
   SESSION_ENGAGED_MOODS,
+  classifyTool,
   isActiveMood,
   isSessionEngaged,
   sameActivity,
@@ -87,5 +88,44 @@ describe('activity mood vocabulary', () => {
     expect(sameActivity(IDLE_ACTIVITY, { mood: 'idle', intensity: 0 })).toBe(true)
     expect(sameActivity(IDLE_ACTIVITY, { mood: 'idle', intensity: 0.5 })).toBe(false)
     expect(sameActivity(IDLE_ACTIVITY, { mood: 'sleeping', intensity: 0 })).toBe(false)
+  })
+})
+
+describe('classifyTool', () => {
+  it('focuses on shell-style tools', () => {
+    expect(classifyTool('bash')).toBe('focus')
+    expect(classifyTool('Bash')).toBe('focus')
+    expect(classifyTool('pwsh')).toBe('focus')
+    expect(classifyTool('run-shell')).toBe('focus')
+  })
+
+  it('scans on search and web tools', () => {
+    expect(classifyTool('web')).toBe('scan')
+    expect(classifyTool('web-search')).toBe('scan')
+    expect(classifyTool('fs-search')).toBe('scan')
+    expect(classifyTool('fetch-url')).toBe('scan')
+  })
+
+  it('gets happy on explicit write-style tools', () => {
+    expect(classifyTool('fs-write')).toBe('happy')
+    expect(classifyTool('edit-file')).toBe('happy')
+    expect(classifyTool('patch')).toBe('happy')
+    expect(classifyTool('create-doc')).toBe('happy')
+  })
+
+  it('reads fs-style tool intent from its JSON arguments', () => {
+    expect(classifyTool('fs', '{"action":"write","path":"a.txt"}')).toBe('happy')
+    expect(classifyTool('fs', '{"action":"edit","path":"a.txt"}')).toBe('happy')
+    expect(classifyTool('fs', '{"action":"mkdir"}')).toBe('happy')
+    expect(classifyTool('fs', '{"action":"read","path":"a.txt"}')).toBe('scan')
+    expect(classifyTool('fs', '{"action":"search","query":"x"}')).toBe('scan')
+    expect(classifyTool('fs', '{"path":"a.txt"}')).toBe('none')
+  })
+
+  it('returns none for unknown tools and missing arguments', () => {
+    expect(classifyTool('todo')).toBe('none')
+    expect(classifyTool('goal')).toBe('none')
+    expect(classifyTool('')).toBe('none')
+    expect(classifyTool('fs')).toBe('none')
   })
 })

@@ -86,6 +86,7 @@ export declare class SessionWhaleObserver {
     private boundAt;
     private lastNodeCount;
     private userTyping;
+    private lastTool;
     private disposed;
     constructor(ctx: WhaleSessionClientContext, service: WhalePetService);
     /**

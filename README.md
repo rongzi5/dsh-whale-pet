@@ -43,6 +43,9 @@ reaction.
 | Session state | Pet reaction |
 |---|---|
 | Assistant tokens or tool calls are running | `working`/`thinking`: faster swimming, input-area gaze, periodic bubbles |
+| Shell tools run (`bash`, `pwsh`, …) | Extra focused dive while the command executes |
+| Search/web tools run (`web`, `fs-search`, …) | Curious head-sway while scanning |
+| File-write tools run (`fs` write/edit, `fs-write`, …) | Happy, livelier tail wag |
 | One turn runs longer than 20s | `focused`: a slight dive posture |
 | Tool fails (non-zero exit code or error node) | `error`: sweat drop + startled eyes for 8s |
 | Long turn (≥15s), goal completion, or plan exit | `celebrating`: a 360° elliptical lap with continuous yaw and screen-space depth, while hearts stream every 650ms |
@@ -54,6 +57,7 @@ Debug attributes on the pet element:
 
 - `data-whale-activity` — current mood (`idle`, `thinking`, `working`, `focused`, `celebrating`, `error`, `sleeping`, `listening`)
 - `data-whale-bridge` — session bridge state (`off`, `waiting`, `bound`)
+- `data-whale-tool` — name of the tool the agent is currently running (empty when idle)
 
 ## Installation
 
@@ -125,12 +129,14 @@ Open `http://127.0.0.1:3080` after the process starts. The Host composition is l
 
 ## Architecture
 
-- `src/client/motion.ts` — pure frame-rate-independent screen-space motion, including the celebration loop path.
+- `src/client/activity.ts` — pure mood/effect vocabulary, the view snapshot type, and the per-tool reaction classifier.
+- `src/client/motion.ts` — pure frame-rate-independent screen-space motion, including the celebration loop path and corner snapping.
+- `src/client/persistence.ts` — guarded `localStorage` state (name, position, hidden, snap preference, first-run date).
 - `src/client/runtime/scheduler.ts` — the single `requestAnimationFrame` clock.
 - `src/client/runtime/whale-pet-controller.ts` — owns the Three.js scene, DOM listeners, and per-frame rendering.
-- `src/client/runtime/whale-pet-service.ts` — observable runtime service (`ctx.whalePet`) with activity and transient effects.
-- `src/client/runtime/session-observer.ts` — polls the current session and maps session state to moods/effects.
-- `src/client/WhalePet.tsx` — thin view consuming the service snapshot through `useSyncExternalStore`.
+- `src/client/runtime/whale-pet-service.ts` — observable runtime service (`ctx.whalePet`) with activity, transient effects, recap history and persisted state.
+- `src/client/runtime/session-observer.ts` — polls the current session and maps session state to moods/effects, user typing, and tool reactions.
+- `src/client/WhalePet.tsx` — thin view consuming the service snapshot through `useSyncExternalStore`; owns the DOM focus listeners for typing detection and the context menu.
 
 ## Model source and acknowledgements
 

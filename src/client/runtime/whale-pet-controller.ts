@@ -12,7 +12,7 @@
  * touching the view, while the view remains a thin overlay shell.
  */
 
-import { IDLE_ACTIVITY, type WhaleActivity } from '../activity.ts'
+import { IDLE_ACTIVITY, type WhaleActivity, type WhaleToolReaction } from '../activity.ts'
 import { PET_HEIGHT, PET_WIDTH, WhaleMotionController } from '../motion.ts'
 import { createWhaleScene, type WhaleScene } from '../whale-scene.ts'
 import { WhaleRenderScheduler, type WhaleTick } from './scheduler.ts'
@@ -47,6 +47,7 @@ export class WhalePetController {
   private activity: WhaleActivity = IDLE_ACTIVITY
   private lastYaw = 0
   private hidden = false
+  private toolReaction: WhaleToolReaction = 'none'
 
   public constructor(
     private readonly motion: WhaleMotionController = new WhaleMotionController(),
@@ -164,6 +165,11 @@ export class WhalePetController {
     this.hidden = hidden
   }
 
+  /** Animation personality of the currently running tool (service-owned). */
+  public setToolReaction(reaction: WhaleToolReaction): void {
+    this.toolReaction = reaction
+  }
+
   /** Run the motion layer's longer celebration lap. */
   public celebrate(): void {
     this.motion.celebrate()
@@ -222,7 +228,7 @@ export class WhalePetController {
     targets.shadow.style.opacity = frame.dragging ? '0.08' : '0.68'
 
     try {
-      scene.render(dt, elapsed, { ...frame, activity: this.activity })
+      scene.render(dt, elapsed, { ...frame, activity: this.activity, toolReaction: this.toolReaction })
     } catch (cause) {
       console.error('[ui-whale-pet] rendering the Three.js scene failed:', cause)
       this.hooks?.onError(RENDER_ERROR_MESSAGE)

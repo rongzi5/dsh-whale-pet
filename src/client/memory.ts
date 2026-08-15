@@ -20,11 +20,16 @@ export interface WhaleMemory {
   turns: Array<{ role: 'user' | 'assistant'; text: string }>
 }
 
+/**
+ * Bounded pet context: keep the pet's own LLM request compact so it never
+ * grows unwieldy in long conversations. Worst case ≈ 24 facts × 80 chars +
+ * 8 turns × 240 chars + persona ≈ 4 KB (~1.2k tokens).
+ */
 export const WHALE_MEMORY_KEY = 'dsh.whale-pet.memory.v1'
-export const FACTS_LIMIT = 64
-export const TURNS_LIMIT = 12
-export const FACT_MAX_LENGTH = 120
-export const TURN_MAX_LENGTH = 600
+export const FACTS_LIMIT = 24
+export const TURNS_LIMIT = 8
+export const FACT_MAX_LENGTH = 80
+export const TURN_MAX_LENGTH = 240
 
 export const WHALE_MEMORY_DEFAULTS: Readonly<WhaleMemory> = Object.freeze({
   facts: [],

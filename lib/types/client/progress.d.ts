@@ -1,14 +1,16 @@
 /**
  * Whale pet session-progress vocabulary: a read-only summary of what the DSH
- * agent is doing right now, derived from the same session snapshot the mood
- * observer consumes. Pure functions so the bubble text and the prompt block
- * stay unit-testable.
+ * agent is doing right now, derived from the session projection (coarse,
+ * observer) and the host event log (fine, `/api/whale-pet/progress`). Pure
+ * functions so the bubble text and the prompt block stay unit-testable.
  *
  * This never writes to the DSH session — the pet only reads progress so long
  * chats are not disturbed.
  */
 /** One read-only snapshot of the bound session's live state. */
 export interface WhaleSessionProgress {
+    /** Session id this snapshot belongs to (for the fine-grained host fetch). */
+    sessionId?: string;
     /** Whether the agent is doing something right now (running/partial/calls). */
     active: boolean;
     /** Whether the turn is still streaming (vs. idle between turns). */
@@ -25,8 +27,17 @@ export interface WhaleSessionProgress {
     goalPhase?: string;
     /** Whether a plan is active, when bound. */
     planActive?: boolean;
+    /** Fine-grained: current step number within the turn (host event log). */
+    step?: number;
+    /** Fine-grained: human line for the latest activity (tool call / output). */
+    lastActivity?: string;
+    /** Fine-grained: truncated summary of the latest tool result. */
+    lastSummary?: string;
 }
-/** One-line human bubble: "正在跑 bash，已经 3 分钟" / "刚跑完 bash". */
+/**
+ * One-line human bubble: "正在鼓捣终端（bash），已经 3 分钟" /
+ * "正在深度思考…" / "刚跑完 bash".
+ */
 export declare function progressToText(progress: WhaleSessionProgress | null): string | null;
 /**
  * Structured progress block appended to the pet's system prompt so the LLM

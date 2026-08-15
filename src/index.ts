@@ -18,9 +18,11 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { LlmRuntime } from '@deepseek-ai/dsh-llm'
+import type { SessionStore } from '@deepseek-ai/dsh-session'
 import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { createChatProxyHandler, directBackend, resolveChatProxyConfig, type WhaleChatBackend } from './chat-proxy.ts'
 import { LlmBackend } from './llm-backend.ts'
+import { createProgressHandler } from './session-progress.ts'
 
 /** Optional per-deployment overrides; env vars are the fallback. */
 export interface WhalePetHostConfig {
@@ -33,12 +35,13 @@ export interface WhalePetHostConfig {
 }
 
 /**
- * Required services. `webServer` hosts the routes; `llm` and `credentials`
- * are declared so the proxy can use the DSH LLM service / credentials —
- * cordis forbids accessing undeclared services from plugin scope, so a
- * try/catch alone silently degrades to the direct-upstream fallback.
+ * Required services. `webServer` hosts the routes; `llm`, `credentials` and
+ * `sessions` are declared so the proxy can use the DSH LLM service,
+ * credentials and session store — cordis forbids accessing undeclared
+ * services from plugin scope, so a try/catch alone silently degrades to the
+ * direct-upstream fallback.
  */
-export const inject = ['webServer', 'llm', 'credentials']
+export const inject = ['webServer', 'llm', 'credentials', 'sessions']
 
 /** Read `ctx.credentials` defensively (declared via inject, still guarded). */
 function safeCredentials(ctx: Context): CredentialProvider | null {
@@ -53,6 +56,15 @@ function safeCredentials(ctx: Context): CredentialProvider | null {
 function safeLlm(ctx: Context): LlmRuntime | null {
   try {
     return ctx.llm
+  } catch {
+    return null
+  }
+}
+
+/** Read `ctx.sessions` (the host session store) defensively. */
+function safeSessions(ctx: Context): SessionStore | null {
+  try {
+    return ctx.sessions ?? null
   } catch {
     return null
   }
@@ -85,12 +97,22 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
   }
 
   const backend: WhaleChatBackend = llm !== null ? new LlmBackend(llm) : directBackend(resolveDirect)
+  const sessions = safeSessions(ctx)
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: '/api/whale-pet',
     handler: createChatProxyHandler(backend),
   }), 'ui-whale-pet: chat proxy')
+
+  // Exact route wins over the chat prefix; fine-grained progress for the pet.
+  if (sessions !== null) {
+    ctx.effect(() => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/whale-pet/progress',
+      handler: createProgressHandler(sessions),
+    }), 'ui-whale-pet: session progress')
+  }
 
   void Promise.resolve(backend.available()).then(configured => {
     if (configured) {

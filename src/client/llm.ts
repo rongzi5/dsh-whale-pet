@@ -1,11 +1,13 @@
 /**
  * Browser-side LLM transport for the whale pet.
  *
- * Talks to the same-origin host proxy (`/api/whale-pet/chat` and
- * `/api/whale-pet/models`) so no API key and no cross-origin request ever
- * leaves the harness page. The transport is injectable so headless tests can
- * fake the upstream.
+ * Talks to the same-origin host proxy (`/api/whale-pet/chat`,
+ * `/api/whale-pet/models` and `/api/whale-pet/progress`) so no API key and no
+ * cross-origin request ever leaves the harness page. The transport is
+ * injectable so headless tests can fake the upstream.
  */
+
+import type { WhaleSessionProgress } from './progress.ts'
 
 export interface WhaleChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -52,11 +54,19 @@ export interface WhaleModelCatalog {
 export interface WhaleChatTransport {
   postChat(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): Promise<string>
   listModels(): Promise<WhaleModelCatalog>
+  /**
+   * Optional fine-grained session progress from the host event log. Absent
+   * transports degrade to the observer's coarse snapshot.
+   */
+  getProgress?(sessionId: string): Promise<WhaleSessionProgress>
 }
 
 export const CHAT_PROXY_PATH = '/api/whale-pet/chat'
 export const MODELS_PROXY_PATH = '/api/whale-pet/models'
+export const PROGRESS_PROXY_PATH = '/api/whale-pet/progress'
 export const CHAT_TIMEOUT_MS = 60_000
+/** Fine progress is best-effort: keep the chat snappy when it is slow. */
+export const PROGRESS_TIMEOUT_MS = 1_500
 
 async function proxyJson<T>(path: string, init: RequestInit, timeoutMs = CHAT_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
@@ -91,5 +101,13 @@ export const localChatTransport: WhaleChatTransport = {
 
   async listModels(): Promise<WhaleModelCatalog> {
     return proxyJson<WhaleModelCatalog>(MODELS_PROXY_PATH, { method: 'GET' })
+  },
+
+  async getProgress(sessionId): Promise<WhaleSessionProgress> {
+    return proxyJson<WhaleSessionProgress>(
+      `${PROGRESS_PROXY_PATH}?session=${encodeURIComponent(sessionId)}`,
+      { method: 'GET' },
+      PROGRESS_TIMEOUT_MS,
+    )
   },
 }

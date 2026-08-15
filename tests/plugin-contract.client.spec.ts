@@ -62,15 +62,15 @@ describe('ui-whale-pet plugin contract', () => {
 
   it('registers the chat proxy route with the web server', () => {
     const routes: unknown[] = []
-    let effectDispose: (() => void) | null = null
+    const effectDisposes: Array<() => void> = []
     const ctx = {
       effect(callback: () => void | (() => void)): () => void {
         const dispose = callback()
-        effectDispose = () => {
+        effectDisposes.push(() => {
           if (typeof dispose === 'function') dispose()
-        }
+        })
         return () => {
-          effectDispose?.()
+          effectDisposes.forEach(dispose => dispose())
         }
       },
       webServer: {
@@ -81,14 +81,16 @@ describe('ui-whale-pet plugin contract', () => {
           }
         },
       },
+      sessions: {} as never,
     }
 
     nodeApply(ctx as never)
 
-    expect(routes).toHaveLength(1)
+    expect(routes).toHaveLength(2)
     expect(routes[0]).toMatchObject({ kind: 'prefix', path: '/api/whale-pet' })
+    expect(routes[1]).toMatchObject({ kind: 'exact', path: '/api/whale-pet/progress' })
 
-    effectDispose?.()
+    effectDisposes.forEach(dispose => dispose())
     expect(routes).toHaveLength(0)
   })
 })

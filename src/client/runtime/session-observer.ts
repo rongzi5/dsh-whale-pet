@@ -290,6 +290,7 @@ export class SessionWhaleObserver {
     const lastNode = snapshot.nodes[snapshot.nodes.length - 1]
     const lastTool = lastNode?.call?.name
     return {
+      sessionId: this.sessionId,
       active,
       running: snapshot.running,
       tools,

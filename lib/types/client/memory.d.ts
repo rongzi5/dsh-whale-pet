@@ -20,11 +20,16 @@ export interface WhaleMemory {
         text: string;
     }>;
 }
+/**
+ * Bounded pet context: keep the pet's own LLM request compact so it never
+ * grows unwieldy in long conversations. Worst case ≈ 24 facts × 80 chars +
+ * 8 turns × 240 chars + persona ≈ 4 KB (~1.2k tokens).
+ */
 export declare const WHALE_MEMORY_KEY = "dsh.whale-pet.memory.v1";
-export declare const FACTS_LIMIT = 64;
-export declare const TURNS_LIMIT = 12;
-export declare const FACT_MAX_LENGTH = 120;
-export declare const TURN_MAX_LENGTH = 600;
+export declare const FACTS_LIMIT = 24;
+export declare const TURNS_LIMIT = 8;
+export declare const FACT_MAX_LENGTH = 80;
+export declare const TURN_MAX_LENGTH = 240;
 export declare const WHALE_MEMORY_DEFAULTS: Readonly<WhaleMemory>;
 /** Read and validate the persisted memory; any failure falls back to defaults. */
 export declare function loadWhaleMemory(storage: StorageLike | null): WhaleMemory;

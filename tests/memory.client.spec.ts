@@ -71,8 +71,8 @@ describe('rememberFacts / appendTurn', () => {
     const again = rememberFacts(once, ['B'])
     expect(again.facts).toEqual(['A', 'B'])
     const many = rememberFacts(once, Array.from({ length: 80 }, (_, i) => `F${i}`))
-    expect(many.facts).toHaveLength(64)
-    expect(many.facts[0]).toBe('F16')
+    expect(many.facts).toHaveLength(24)
+    expect(many.facts[0]).toBe('F56')
   })
 
   it('appends turns chronologically and keeps the most recent window', () => {
@@ -80,8 +80,8 @@ describe('rememberFacts / appendTurn', () => {
     for (let i = 0; i < 16; i += 1) {
       memory = appendTurn(memory, i % 2 === 0 ? 'user' : 'assistant', `turn-${i}`)
     }
-    expect(memory.turns).toHaveLength(12)
-    expect(memory.turns[0]).toEqual({ role: 'user', text: 'turn-4' })
+    expect(memory.turns).toHaveLength(8)
+    expect(memory.turns[0]).toEqual({ role: 'user', text: 'turn-8' })
     expect(memory.turns.at(-1)).toEqual({ role: 'assistant', text: 'turn-15' })
   })
 

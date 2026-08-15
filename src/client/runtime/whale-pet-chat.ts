@@ -134,7 +134,19 @@ export class WhalePetChat {
     try {
       const memory = loadWhaleMemory(this.storage)
       const meta = this.meta()
-      const progress = this.progressProvider !== null ? this.progressProvider() : null
+      const coarse = this.progressProvider !== null ? this.progressProvider() : null
+      // Best-effort fine-grained progress from the host event log; the coarse
+      // projection snapshot is the fallback (and the only option for id-less
+      // progress sources).
+      let progress = coarse
+      if (coarse !== null && coarse.sessionId !== undefined && this.transport.getProgress !== undefined) {
+        try {
+          const fine = await this.transport.getProgress(coarse.sessionId)
+          progress = { ...coarse, ...fine }
+        } catch {
+          progress = coarse
+        }
+      }
       const reply = await this.transport.postChat(buildChatMessages(memory, meta, text, progress), options)
       const cleanReply = stripMemoryMarkers(reply)
       const next = rememberFacts(memory, extractFacts(reply))

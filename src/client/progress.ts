@@ -1,8 +1,8 @@
 /**
  * Whale pet session-progress vocabulary: a read-only summary of what the DSH
- * agent is doing right now, derived from the same session snapshot the mood
- * observer consumes. Pure functions so the bubble text and the prompt block
- * stay unit-testable.
+ * agent is doing right now, derived from the session projection (coarse,
+ * observer) and the host event log (fine, `/api/whale-pet/progress`). Pure
+ * functions so the bubble text and the prompt block stay unit-testable.
  *
  * This never writes to the DSH session — the pet only reads progress so long
  * chats are not disturbed.
@@ -10,6 +10,8 @@
 
 /** One read-only snapshot of the bound session's live state. */
 export interface WhaleSessionProgress {
+  /** Session id this snapshot belongs to (for the fine-grained host fetch). */
+  sessionId?: string
   /** Whether the agent is doing something right now (running/partial/calls). */
   active: boolean
   /** Whether the turn is still streaming (vs. idle between turns). */
@@ -26,15 +28,47 @@ export interface WhaleSessionProgress {
   goalPhase?: string
   /** Whether a plan is active, when bound. */
   planActive?: boolean
+  /** Fine-grained: current step number within the turn (host event log). */
+  step?: number
+  /** Fine-grained: human line for the latest activity (tool call / output). */
+  lastActivity?: string
+  /** Fine-grained: truncated summary of the latest tool result. */
+  lastSummary?: string
 }
 
-/** One-line human bubble: "正在跑 bash，已经 3 分钟" / "刚跑完 bash". */
+/** Tool-name → playful-but-clear activity phrasing, first match wins. */
+const TOOL_FLAVOR: ReadonlyArray<readonly [RegExp, string]> = [
+  [/bash|terminal|shell|pwsh|powershell|cmd/i, '正在鼓捣终端'],
+  [/web[_ ]?search|browser|fetch|http|curl/i, '正在网上冲浪'],
+  [/fs|file|read|write|edit|grep|glob/i, '正在翻文件'],
+  [/skill/i, '正在翻技能手册'],
+  [/subagent|agent/i, '正在指挥小伙伴'],
+  [/goal|todo/i, '正在盘计划'],
+  [/ask[_ ]?user/i, '正在想问你问题'],
+  [/llm|model|chat/i, '正在想事情'],
+]
+
+function flavorTool(name: string): string {
+  for (const [pattern, phrase] of TOOL_FLAVOR) {
+    if (pattern.test(name)) return phrase
+  }
+  return '正在忙活'
+}
+
+/**
+ * One-line human bubble: "正在鼓捣终端（bash），已经 3 分钟" /
+ * "正在深度思考…" / "刚跑完 bash".
+ */
 export function progressToText(progress: WhaleSessionProgress | null): string | null {
   if (progress === null || !progress.active) return null
   if (progress.running) {
-    const tools = progress.tools.length > 0 ? progress.tools.join('、') : '某个工具'
     const minutes = Math.max(1, Math.round(progress.turnMs / 60_000))
-    return `正在跑 ${tools}，已经 ${minutes} 分钟`
+    const time = `已经 ${minutes} 分钟`
+    if (progress.tools.length > 0) {
+      const tools = progress.tools.join('、')
+      return `${flavorTool(progress.tools[0] ?? '')}（${tools}），${time}`
+    }
+    return `正在深度思考…（${time}）`
   }
   if (progress.lastTool !== undefined) {
     return `刚跑完 ${progress.lastTool}`
@@ -50,14 +84,21 @@ export function buildProgressContext(progress: WhaleSessionProgress | null): str
   if (progress === null || !progress.active) return null
   const lines: string[] = ['当前 DSH 会话状态（用户可能问进度，请如实简短回答）：']
   if (progress.running) {
-    const tools = progress.tools.length > 0 ? progress.tools.join('、') : '某个工具'
+    const tools = progress.tools.length > 0 ? progress.tools.join('、') : undefined
     const minutes = Math.max(1, Math.round(progress.turnMs / 60_000))
-    lines.push(`- agent 正在运行：${tools}（本回合已持续约 ${minutes} 分钟）`)
+    if (tools !== undefined) {
+      const stepText = progress.step !== undefined && progress.step > 0 ? `（第 ${progress.step} 步）` : ''
+      lines.push(`- agent 正在运行：${tools}${stepText}，本回合已持续约 ${minutes} 分钟`)
+    } else {
+      lines.push(`- agent 正在深度思考，已持续约 ${minutes} 分钟`)
+    }
   } else {
     lines.push('- agent 当前空闲')
   }
   if (progress.nodeCount > 0) lines.push(`- 会话已提交 ${progress.nodeCount} 个节点`)
   if (progress.lastTool !== undefined) lines.push(`- 最近一次工具调用：${progress.lastTool}`)
+  if (progress.lastActivity !== undefined) lines.push(`- 最新动态：${progress.lastActivity}`)
+  if (progress.lastSummary !== undefined) lines.push(`- 最近结果：${progress.lastSummary}`)
   if (progress.goalPhase !== undefined) lines.push(`- goal 阶段：${progress.goalPhase}`)
   if (progress.planActive !== undefined) lines.push(`- plan 进行中：${progress.planActive ? '是' : '否'}`)
   return lines.join('\n')

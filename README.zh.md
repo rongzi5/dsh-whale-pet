@@ -60,11 +60,17 @@ OpenAI 兼容上游地址）与 `DSH_WHALE_API_MODEL`（默认 `deepseek-chat`�
 
 ### 会话进度（只读）
 
-鲸鲸能回答"进度如何了"：每次桌宠聊天时，会把一份精简的**只读进度快照**
-（当前运行的工具、回合时长、已提交节点数、goal/plan 阶段）附进桌宠自己的系统
-提示，让它如实回答长任务的进度。这份快照只读会话投影，**绝不写入 DSH 会话**，
-不影响长对话的上下文。另外，agent 忙碌时**单击鲸鲸**会直接弹出
-"正在跑 bash，已经 3 分钟"这类进度气泡，无需打字。
+鲸鲸能回答"进度如何了"：每次桌宠聊天时，会把一份精简的**只读进度快照**附进桌宠自己的系统
+提示，让它如实回答长任务的进度。快照分两层——投影层的实时状态（当前运行的工具、回合时长、
+节点数、goal/plan 阶段）+ host 事件日志的细粒度摘要（当前第几步、最新动态如
+"运行 bash：npm test"、最近结果摘要，见 `GET /api/whale-pet/progress?session=<id>`）。
+这份快照只读，**绝不写入 DSH 会话**，不影响长对话的上下文。
+
+agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣终端（bash），已经 3 分钟"、
+"正在深度思考…"），无需打字。
+
+桌宠自身的上下文是**有界**的：最多 24 条记忆事实（每条 80 字符）+ 最近 8 轮对话
+（每轮 240 字符）+ 进度块，最坏约 4KB（≈1.2k tokens），长聊不会膨胀。
 
 调试：`GET /api/whale-pet/health` 返回 `{ ok, configured }`。
 
@@ -117,7 +123,7 @@ OpenAI 兼容上游地址）与 `DSH_WHALE_API_MODEL`（默认 `deepseek-chat`�
 ```sh
 npm install            # 开发工具链：typescript、esbuild、vitest、three 等
 npm run build          # tsc 声明 + esbuild host/client 产物 → lib/
-npm test               # vitest 套件（108 个用例）
+npm test               # vitest 套件（118 个用例）
 node install-profile.mjs web
 ```
 

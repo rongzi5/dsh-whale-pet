@@ -4,6 +4,7 @@ import { WhalePetChat, CHAT_FAILURE_BUBBLE, loadChatPreferences, saveChatPrefere
 import { loadWhaleMemory } from '../src/client/memory.ts'
 import type { StorageLike } from '../src/client/persistence.ts'
 import type { WhaleChatMessage, WhaleChatTransport, WhaleModelCatalog } from '../src/client/llm.ts'
+import type { WhaleSessionProgress } from '../src/client/progress.ts'
 
 class FakeStorage implements StorageLike {
   private readonly map = new Map<string, string>()
@@ -172,8 +173,23 @@ describe('WhalePetChat', () => {
       async listModels(): Promise<WhaleModelCatalog> {
         return FAKE_CATALOG
       },
+      async getProgress(sessionId): Promise<WhaleSessionProgress> {
+        expect(sessionId).toBe('session-1')
+        return {
+          active: true,
+          running: true,
+          tools: ['bash'],
+          turnMs: 150_000,
+          nodeCount: 8,
+          lastTool: 'bash',
+          step: 4,
+          lastActivity: '运行 bash：npm test',
+          lastSummary: '完成：108 passed',
+        }
+      },
     }
     const progressProvider = () => ({
+      sessionId: 'session-1',
       active: true,
       running: true,
       tools: ['bash'],
@@ -185,15 +201,50 @@ describe('WhalePetChat', () => {
     const chat = new WhalePetChat(service, storage, transport, progressProvider)
 
     // Click recap reports the live progress line without any LLM call.
-    expect(chat.getProgressText()).toBe('正在跑 bash，已经 3 分钟')
+    expect(chat.getProgressText()).toBe('正在鼓捣终端（bash），已经 3 分钟')
 
-    // The chat request carries the progress block in the system prompt.
+    // The chat request merges the fine-grained host progress into the prompt.
     await chat.ask('进度如何了')
     const system = receivedMessages?.[0]?.content ?? ''
     expect(system).toContain('当前 DSH 会话状态')
-    expect(system).toContain('正在运行：bash')
+    expect(system).toContain('正在运行：bash（第 4 步）')
     expect(system).toContain('8 个节点')
+    expect(system).toContain('最新动态：运行 bash：npm test')
+    expect(system).toContain('最近结果：完成：108 passed')
     expect(system).toContain('goal 阶段：active')
+    service.dispose()
+  })
+
+  it('degrades to the coarse snapshot when the fine progress fetch fails', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    let receivedMessages: readonly WhaleChatMessage[] | null = null
+    const transport: WhaleChatTransport = {
+      async postChat(messages): Promise<string> {
+        receivedMessages = messages
+        return 'ok'
+      },
+      async listModels(): Promise<WhaleModelCatalog> {
+        return FAKE_CATALOG
+      },
+      async getProgress(): Promise<WhaleSessionProgress> {
+        throw new Error('host progress unavailable')
+      },
+    }
+    const progressProvider = () => ({
+      sessionId: 'session-1',
+      active: true,
+      running: true,
+      tools: ['bash'],
+      turnMs: 60_000,
+      nodeCount: 3,
+      goalPhase: 'active',
+    })
+    const chat = new WhalePetChat(service, storage, transport, progressProvider)
+    await chat.ask('进度如何了')
+    const system = receivedMessages?.[0]?.content ?? ''
+    expect(system).toContain('正在运行：bash')
+    expect(system).not.toContain('最新动态')
     service.dispose()
   })
 

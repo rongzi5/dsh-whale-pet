@@ -74,12 +74,21 @@ drops if the proxy is unreachable or unconfigured (no key → HTTP 503).
 ### Session progress (read-only)
 
 The pet can answer "进度如何了": every chat request appends a compact
-**read-only progress snapshot** (running tools, turn duration, committed node
-count, goal/plan phase) to the pet's own system prompt, so it truthfully
-reports long-task progress. The snapshot only reads the session projection —
-it **never writes to the DSH conversation**, so long chats are not disturbed.
-While the agent is busy, a plain **click on the pet** bubbles
-"正在跑 bash，已经 3 分钟" without typing.
+**read-only progress snapshot** to the pet's own system prompt, so it
+truthfully reports long-task progress. The snapshot has two layers — the
+live projection state (running tools, turn duration, node count, goal/plan
+phase) plus a fine-grained summary from the host event log (current step,
+latest activity like "运行 bash：npm test", latest result summary; served at
+`GET /api/whale-pet/progress?session=<id>`). It only reads — it **never
+writes to the DSH conversation**, so long chats are not disturbed.
+
+While the agent is busy, a plain **click on the pet** bubbles a playful but
+factual progress line ("正在鼓捣终端（bash），已经 3 分钟" / "正在深度思考…")
+without typing.
+
+The pet's own context stays **bounded**: up to 24 memory facts (80 chars
+each) + the last 8 turns (240 chars each) + the progress block, worst case
+≈ 4 KB (~1.2k tokens), so long chats never bloat it.
 
 Debug: `GET /api/whale-pet/health` reports `{ ok, configured }`.
 
@@ -137,7 +146,7 @@ The repository builds standalone (no pnpm workspace, no dsh checkout):
 ```sh
 npm install            # dev toolchain: typescript, esbuild, vitest, three…
 npm run build          # tsc declarations + esbuild host/client bundles → lib/
-npm test               # vitest suite (108 tests)
+npm test               # vitest suite (118 tests)
 node install-profile.mjs web
 ```
 

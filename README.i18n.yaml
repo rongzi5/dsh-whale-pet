@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-whale-pet/README.md
-README.md: dc1d259f60763eb1a15db286657645451314496d
-README.zh.md: ad2eda312166141dcebeb5f08c87137fdf10b161
+README.md: c25b83c171487e672909497428234f95f0d09f21
+README.zh.md: df018a40b12180490c0bbcdfebc1647522c36e8c

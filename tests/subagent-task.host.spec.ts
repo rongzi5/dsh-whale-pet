@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createTaskHandler } from '../src/subagent-task.ts'
 import { createServer } from 'node:http'
-import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent'
 
 function httpPost(port: number, path: string, payload: unknown): Promise<{ status: number; body: unknown }> {
@@ -19,118 +18,109 @@ function httpPost(port: number, path: string, payload: unknown): Promise<{ statu
   })
 }
 
-function fakeAgents(initiator = true): AgentRegistry & { created: number } {
-  const agent = { id: 'parent-agent' } as never
-  const created = { count: 0 }
+interface FakeAgent {
+  followupCalls: Array<{ content: Array<{ type: string; text: string }> }>
+  cancelled: boolean
+  session: {
+    id: string
+    events: Array<{ type: string; data: Record<string, unknown> }>
+  }
+  followup(message: { content: Array<{ type: string; text: string }> }): void
+  whenIdle(): Promise<void>
+  cancel(options: { kind: string }): void
+}
+
+function fakeAgent(events: Array<{ type: string; data: Record<string, unknown> }>): FakeAgent {
   return {
-    created: 0,
-    currentInitiator(): unknown {
-      return initiator ? agent : undefined
+    followupCalls: [],
+    cancelled: false,
+    session: { id: 'child-session-1', events },
+    followup(message) {
+      this.followupCalls.push({ content: message.content })
     },
-    async create(options: { sessionId: unknown }): Promise<{ agent: unknown; dispose(): Promise<void> }> {
-      created.count += 1
-      this.created = created.count
+    async whenIdle(): Promise<void> {},
+    cancel(options: { kind: string }): void {
+      this.cancelled = true
+    },
+  }
+}
+
+function fakeAgents(agent: FakeAgent): AgentRegistry & { createCalls: number } {
+  return {
+    createCalls: 0,
+    async create(): Promise<{ agent: FakeAgent; dispose(): Promise<void> }> {
+      this.createCalls += 1
       return { agent, dispose: async () => {} }
     },
-  } as unknown as AgentRegistry & { created: number }
+    currentInitiator(): unknown {
+      return undefined
+    },
+  } as unknown as AgentRegistry & { createCalls: number }
 }
 
-function fakeSubagents(resultText: string, fail = false): SubagentRuntime & { calls: Array<{ label?: string; prompt: unknown; parent: unknown }> } {
-  const calls: Array<{ label?: string; prompt: unknown; parent: unknown }> = []
-  return {
-    calls,
-    list(): string[] {
-      return ['in-process']
-    },
-    async start(_name: string, request: { label?: string; prompt: unknown; parent: unknown; signal: AbortSignal }) {
-      calls.push({ label: request.label, prompt: request.prompt, parent: request.parent })
-      const result = fail
-        ? Promise.reject(new Error('child crashed'))
-        : Promise.resolve({ output: [{ type: 'text', text: resultText }], stopReason: 'completed' })
-      return { id: 'child-session-1', localAgent: undefined, result, dispose: async () => {} }
-    },
-  } as unknown as SubagentRuntime & { calls: Array<{ label?: string; prompt: unknown; parent: unknown }> }
-}
-
-async function serve(subagents: SubagentRuntime, agents: AgentRegistry): Promise<{ port: number; close: () => void }> {
-  const server = createServer(createTaskHandler(subagents, agents, null, () => '/tmp/workspace'))
+async function serve(agents: AgentRegistry): Promise<{ port: number; close: () => void }> {
+  const server = createServer(createTaskHandler(agents, null, () => '/tmp/workspace'))
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()))
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : 0
   return { port, close: () => server.close() }
 }
 
+const completedEvents = [
+  { type: 'turn/start', data: { turn: 1 } },
+  { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '写好了，hello.py 输出 42' }] } } },
+  { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+]
+
+const errorEvents = [
+  { type: 'turn/start', data: { turn: 1 } },
+  { type: 'turn/end', data: { turn: 1, reason: { kind: 'error', error: { message: 'boom', code: 'E_X' } } } },
+]
+
 describe('createTaskHandler', () => {
-  it('dispatches a subagent task with the current initiator as parent', async () => {
-    const subagents = fakeSubagents('任务完成：写了 hello.py')
-    const agents = fakeAgents(true)
-    const proxy = await serve(subagents, agents)
+  it('runs a child agent and returns its final assistant text', async () => {
+    const agent = fakeAgent(completedEvents)
+    const agents = fakeAgents(agent)
+    const proxy = await serve(agents)
     try {
-      const result = await httpPost(proxy.port, '/api/whale-pet/task', { prompt: '帮我写一个 hello.py' })
+      const result = await httpPost(proxy.port, '/api/whale-pet/task', { prompt: '帮我写 hello.py', session: 'sess-1' })
       expect(result.status).toBe(200)
       expect(result.body).toMatchObject({
-        output: '任务完成：写了 hello.py',
+        output: '写好了，hello.py 输出 42',
         sessionId: 'child-session-1',
         completed: true,
-        debug: { stopReason: 'completed' },
       })
-      expect(subagents.calls).toHaveLength(1)
-      expect(subagents.calls[0]?.label).toBe('鲸鲸的任务')
-      expect(agents.created).toBe(0)
+      expect(agent.followupCalls).toHaveLength(1)
+      expect(agent.followupCalls[0]?.content[0]?.text).toContain('任务：帮我写 hello.py')
+      expect(agents.createCalls).toBe(1)
+      expect(agent.cancelled).toBe(false)
     } finally {
       proxy.close()
     }
   })
 
-  it('creates a fresh parent agent when no initiator is active', async () => {
-    const subagents = fakeSubagents('ok')
-    const agents = fakeAgents(false)
-    const proxy = await serve(subagents, agents)
+  it('surfaces turn errors instead of an empty bubble', async () => {
+    const agent = fakeAgent(errorEvents)
+    const agents = fakeAgents(agent)
+    const proxy = await serve(agents)
     try {
-      const result = await httpPost(proxy.port, '/api/whale-pet/task', { prompt: '调研一下' })
+      const result = await httpPost(proxy.port, '/api/whale-pet/task', { prompt: '跑一下' })
       expect(result.status).toBe(200)
-      expect(agents.created).toBe(1)
-      expect(result.body).toMatchObject({ completed: true })
-    } finally {
-      proxy.close()
-    }
-  })
-
-  it('reports still-running with the child session id on failure', async () => {
-    const subagents = fakeSubagents('', true)
-    const agents = fakeAgents(true)
-    const proxy = await serve(subagents, agents)
-    try {
-      const result = await httpPost(proxy.port, '/api/whale-pet/task', { prompt: '跑个长任务' })
-      expect(result.status).toBe(200)
-      expect(result.body).toMatchObject({ completed: false, sessionId: 'child-session-1' })
-      expect(JSON.stringify(result.body)).toContain('child crashed')
+      expect(JSON.stringify(result.body)).toContain('boom')
+      expect(result.body).toMatchObject({ completed: false })
     } finally {
       proxy.close()
     }
   })
 
   it('rejects empty prompts and missing bodies', async () => {
-    const subagents = fakeSubagents('x')
-    const agents = fakeAgents(true)
-    const proxy = await serve(subagents, agents)
+    const agents = fakeAgents(fakeAgent(completedEvents))
+    const proxy = await serve(agents)
     try {
       const empty = await httpPost(proxy.port, '/api/whale-pet/task', { prompt: '   ' })
       expect(empty.status).toBe(400)
       const missing = await httpPost(proxy.port, '/api/whale-pet/task', { nope: true })
       expect(missing.status).toBe(400)
-    } finally {
-      proxy.close()
-    }
-  })
-
-  it('reports 503 without a subagent provider', async () => {
-    const subagents = { list: () => [] } as unknown as SubagentRuntime
-    const agents = fakeAgents(true)
-    const proxy = await serve(subagents, agents)
-    try {
-      const result = await httpPost(proxy.port, '/api/whale-pet/task', { prompt: 'hi' })
-      expect(result.status).toBe(503)
     } finally {
       proxy.close()
     }

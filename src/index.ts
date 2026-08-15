@@ -20,7 +20,6 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { SessionStore } from '@deepseek-ai/dsh-session'
 import type { JobRegistry } from '@deepseek-ai/dsh-jobs'
-import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
 import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
@@ -42,12 +41,12 @@ export interface WhalePetHostConfig {
 
 /**
  * Required services. `webServer` hosts the routes; `llm`, `credentials`,
- * `sessions`, `jobs`, `subagents` and `agents` are declared so the proxy can
+ * `sessions`, `jobs` and `agents` are declared so the proxy can
  * use the DSH LLM service, credentials, session store, job registry and
  * subagent machinery — cordis forbids accessing undeclared services from
  * plugin scope, so a try/catch alone silently degrades to the fallback.
  */
-export const inject = ['webServer', 'llm', 'credentials', 'sessions', 'jobs', 'subagents', 'agents', 'settings']
+export const inject = ['webServer', 'llm', 'credentials', 'sessions', 'jobs', 'agents', 'settings']
 
 /** Read `ctx.credentials` defensively (declared via inject, still guarded). */
 function safeCredentials(ctx: Context): CredentialProvider | null {
@@ -80,15 +79,6 @@ function safeSessions(ctx: Context): SessionStore | null {
 function safeJobs(ctx: Context): JobRegistry | null {
   try {
     return ctx.jobs ?? null
-  } catch {
-    return null
-  }
-}
-
-/** Read `ctx.subagents` defensively. */
-function safeSubagents(ctx: Context): SubagentRuntime | null {
-  try {
-    return ctx.subagents ?? null
   } catch {
     return null
   }
@@ -149,7 +139,6 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
   const backend: WhaleChatBackend = llm !== null ? new LlmBackend(llm) : directBackend(resolveDirect)
   const sessions = safeSessions(ctx)
   const jobs = safeJobs(ctx)
-  const subagents = safeSubagents(ctx)
   const agents = safeAgents(ctx)
   const workspaces = safeWorkspaces(ctx)
   const settings = safeSettings(ctx)
@@ -169,12 +158,12 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
     }), 'ui-whale-pet: session progress')
   }
 
-  // Subagent task dispatch: the pet can spawn a real child conversation.
-  if (subagents !== null && agents !== null) {
+  // Subagent task dispatch: the pet runs a real child conversation.
+  if (agents !== null) {
     ctx.effect(() => ctx.webServer.register({
       kind: 'exact',
       path: '/api/whale-pet/task',
-      handler: createTaskHandler(subagents, agents, sessions, () => workspaces?.list()[0]?.path, () => {
+      handler: createTaskHandler(agents, sessions, () => workspaces?.list()[0]?.path, () => {
         if (settings === null) return undefined
         try {
           const value = settings.get(settingsNamespace('agent-presets')) as { default?: unknown } | undefined

@@ -1,28 +1,23 @@
 /**
  * Host-side task dispatch for the whale pet: when the user asks the pet for
  * something that needs real execution (writing code, running commands,
- * research…), the pet's host entry spawns a DSH subagent — an independent
- * conversation in the current workspace, exactly like the agent's own
- * `subagent` tool — and returns the child's final output plus its session id
- * (so the user can open the child conversation in the UI).
+ * research…), the pet's host entry runs a dedicated agent conversation in the
+ * current workspace and returns its final output plus the session id.
  *
- * The child inherits the DSH agent machinery (tools, model, workspace), so
- * "让鲸鲸开个任务" runs a real agent loop without touching the main session.
+ * Unlike `ctx.subagents.start` (whose children are marked `origin: subagent`
+ * and therefore hidden from the workspace session list, and which hang under
+ * an invisible parent), this module creates the child agent directly with a
+ * normal session origin — so the conversation appears in the workspace
+ * session list and stays there after the run. The child inherits the DSH
+ * agent machinery (tools, model, preset), so it really executes.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent';
-import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent';
 import { type SessionStore } from '@deepseek-ai/dsh-session';
 /** How long a pet-dispatched task may run before reporting "still running". */
 export declare const TASK_TIMEOUT_MS = 60000;
 /** Final-output text cap returned to the pet bubble. */
 export declare const TASK_OUTPUT_LIMIT = 1200;
-export interface TaskRequest {
-    /** The task description given to the child agent. */
-    prompt: string;
-    /** Optional label shown in the subagent UI. */
-    label?: string;
-}
 export interface TaskResponse {
     /** The child agent's final output text. */
     output: string;
@@ -43,14 +38,12 @@ export declare const TASK_MAX_BODY_BYTES: number;
 /**
  * Build the `POST /api/whale-pet/task` handler.
  *
- * Parent agent: the current initiator when one is active (so the child hangs
- * under the live conversation and shows in the subagent view); otherwise a
- * fresh parent agent is created with the cwd of the caller's session (taken
- * from the session header), so the child session lands in the user's
- * workspace and appears in the session list. The provider is whatever
- * subagent backend is registered first (spawn/fork in-process).
+ * The child is created directly via the agent registry (workspace cwd from
+ * the caller session header, deployment preset and default model), given one
+ * user message, and awaited until idle. The child session is deliberately
+ * NOT disposed so it stays in the workspace session list.
  */
-export declare function createTaskHandler(subagents: SubagentRuntime, agents: AgentRegistry, sessions: SessionStore | null, workspaceRoot: () => string | undefined, defaultPreset?: () => string | undefined, defaultModel?: () => {
+export declare function createTaskHandler(agents: AgentRegistry, sessions: SessionStore | null, workspaceRoot: () => string | undefined, defaultPreset?: () => string | undefined, defaultModel?: () => {
     provider?: string;
     model?: string;
 } | undefined): (req: IncomingMessage, res: ServerResponse) => Promise<void>;

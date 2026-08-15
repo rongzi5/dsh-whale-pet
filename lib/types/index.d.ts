@@ -26,7 +26,7 @@ export interface WhalePetHostConfig {
 }
 /**
  * Required services. `webServer` hosts the routes; `llm`, `credentials`,
- * `sessions`, `jobs`, `subagents` and `agents` are declared so the proxy can
+ * `sessions`, `jobs` and `agents` are declared so the proxy can
  * use the DSH LLM service, credentials, session store, job registry and
  * subagent machinery — cordis forbids accessing undeclared services from
  * plugin scope, so a try/catch alone silently degrades to the fallback.

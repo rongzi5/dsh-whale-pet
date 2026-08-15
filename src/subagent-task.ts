@@ -1,32 +1,27 @@
 /**
  * Host-side task dispatch for the whale pet: when the user asks the pet for
  * something that needs real execution (writing code, running commands,
- * research…), the pet's host entry spawns a DSH subagent — an independent
- * conversation in the current workspace, exactly like the agent's own
- * `subagent` tool — and returns the child's final output plus its session id
- * (so the user can open the child conversation in the UI).
+ * research…), the pet's host entry runs a dedicated agent conversation in the
+ * current workspace and returns its final output plus the session id.
  *
- * The child inherits the DSH agent machinery (tools, model, workspace), so
- * "让鲸鲸开个任务" runs a real agent loop without touching the main session.
+ * Unlike `ctx.subagents.start` (whose children are marked `origin: subagent`
+ * and therefore hidden from the workspace session list, and which hang under
+ * an invisible parent), this module creates the child agent directly with a
+ * normal session origin — so the conversation appears in the workspace
+ * session list and stays there after the run. The child inherits the DSH
+ * agent machinery (tools, model, preset), so it really executes.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import type { AgentRegistry } from '@deepseek-ai/dsh-agent'
-import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
-import { SessionId, type SessionStore } from '@deepseek-ai/dsh-session'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { Agent, AgentRegistry } from '@deepseek-ai/dsh-agent'
+import { SessionId, type SessionEvent, type SessionStore } from '@deepseek-ai/dsh-session'
 
 /** How long a pet-dispatched task may run before reporting "still running". */
 export const TASK_TIMEOUT_MS = 60_000
 /** Final-output text cap returned to the pet bubble. */
 export const TASK_OUTPUT_LIMIT = 1_200
-
-export interface TaskRequest {
-  /** The task description given to the child agent. */
-  prompt: string
-  /** Optional label shown in the subagent UI. */
-  label?: string
-}
 
 export interface TaskResponse {
   /** The child agent's final output text. */
@@ -39,7 +34,7 @@ export interface TaskResponse {
   debug?: { stopReason: string; eventCount: number; eventTypes?: string[]; turnEndReason?: unknown }
 }
 
-/** Extract the plain text from a result's content blocks. */
+/** Extract the plain text from message content blocks. */
 function textOf(blocks: ReadonlyArray<{ type?: string; text?: unknown }> | undefined): string {
   if (blocks === undefined) return ''
   return blocks
@@ -90,27 +85,40 @@ async function readJsonBody(
   }
 }
 
+/** Settle reason of a child turn, for diagnostics. */
+function turnEndReasonOf(events: readonly SessionEvent[]): unknown {
+  for (const event of [...events].reverse()) {
+    if (event.type === 'turn/end') return event.data.reason
+  }
+  return undefined
+}
+
+/** Final assistant text of a child session, for the result. */
+function finalAssistantText(events: readonly SessionEvent[]): string {
+  for (const event of [...events].reverse()) {
+    if (event.type === 'assistant/message') {
+      const text = textOf(event.data.message.content)
+      if (text !== '') return text
+    }
+  }
+  return ''
+}
+
 /**
  * Build the `POST /api/whale-pet/task` handler.
  *
- * Parent agent: the current initiator when one is active (so the child hangs
- * under the live conversation and shows in the subagent view); otherwise a
- * fresh parent agent is created with the cwd of the caller's session (taken
- * from the session header), so the child session lands in the user's
- * workspace and appears in the session list. The provider is whatever
- * subagent backend is registered first (spawn/fork in-process).
+ * The child is created directly via the agent registry (workspace cwd from
+ * the caller session header, deployment preset and default model), given one
+ * user message, and awaited until idle. The child session is deliberately
+ * NOT disposed so it stays in the workspace session list.
  */
 export function createTaskHandler(
-  subagents: SubagentRuntime,
   agents: AgentRegistry,
   sessions: SessionStore | null,
   workspaceRoot: () => string | undefined,
   defaultPreset: () => string | undefined = () => undefined,
   defaultModel: () => { provider?: string; model?: string } | undefined = () => undefined,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
-  // Cached fallback parent (created once, kept alive so its children stay in
-  // the session store and the workspace session list).
-  let fallbackParent: Awaited<ReturnType<AgentRegistry['create']>>['agent'] | null = null
   return async (req, res): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     if (url.pathname !== '/api/whale-pet/task') {
@@ -132,106 +140,86 @@ export function createTaskHandler(
       sendJson(res, 400, { error: 'missing prompt' })
       return
     }
-    const label = typeof record.label === 'string' && record.label !== '' ? record.label.slice(0, 40) : '鲸鲸的任务'
     const callerSessionId = typeof record.session === 'string' && record.session !== '' ? record.session : undefined
-    const providers = subagents.list()
-    const provider = providers[0]
-    if (provider === undefined) {
-      sendJson(res, 503, { error: 'no subagent provider registered' })
-      return
-    }
 
-    // A cached fallback parent keeps dispatched child conversations alive in
-    // the session store after the run settles — disposing the parent cascades
-    // into the children and removes them from the workspace session list.
-    // It is created once (only when no initiator is active) and reused.
-    const activeParent = agents.currentInitiator() ?? undefined
-    if (activeParent === undefined && fallbackParent === null) {
-      const cwd = callerSessionId !== undefined && sessions !== null
-        ? (() => {
-          try {
-            return sessions.get(SessionId(callerSessionId))?.header.cwd
-          } catch {
-            return undefined
-          }
-        })()
-        : undefined
-      const resolvedCwd = cwd ?? workspaceRoot()
-      const preset = defaultPreset()
-      const model = defaultModel()
-      const agentOptions = model?.provider !== undefined && model?.model !== undefined
-        ? { provider: model.provider, model: model.model }
-        : undefined
-      const handle = await agents.create({
+    const cwd = callerSessionId !== undefined && sessions !== null
+      ? (() => {
+        try {
+          return sessions.get(SessionId(callerSessionId))?.header.cwd
+        } catch {
+          return undefined
+        }
+      })()
+      : undefined
+    const resolvedCwd = cwd ?? workspaceRoot()
+    const preset = defaultPreset()
+    const model = defaultModel()
+    const agentOptions = model?.provider !== undefined && model?.model !== undefined
+      ? { provider: model.provider, model: model.model }
+      : undefined
+
+    let handle: { agent: Agent; dispose(): Promise<void> } | null = null
+    try {
+      handle = await agents.create({
         sessionId: SessionId(randomUUID()),
         meta: {
           ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
           ...(preset !== undefined ? { agentPreset: preset } : {}),
-          origin: 'subagent',
+          ...(callerSessionId !== undefined ? { parentSession: SessionId(callerSessionId) } : {}),
           delegationDepth: 1,
         },
         ...(agentOptions !== undefined ? { agentOptions } : {}),
       })
-      fallbackParent = handle.agent
-    }
-    const parent = activeParent ?? fallbackParent!
-    const signal = AbortSignal.timeout(TASK_TIMEOUT_MS)
-    try {
-      const run = await subagents.start(provider, {
-        label,
-        prompt: [{ type: 'text', text: taskPersona(prompt) }],
-        parent,
-        signal,
-      })
-      let output = ''
-      let completed = true
+      const child = handle.agent
+      const signal = AbortSignal.timeout(TASK_TIMEOUT_MS)
+      const onAbort = (): void => {
+        try {
+          child.cancel({ kind: 'parent' })
+        } catch {
+          // Already settled; cancellation is best-effort.
+        }
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
       let stopReason = 'unknown'
-      let eventCount = 0
-      let eventTypes: string[] = []
-      let turnEndReason: unknown
       try {
-        const result = await run.result
-        stopReason = result.stopReason
-        output = textOf(result.output).slice(0, TASK_OUTPUT_LIMIT)
-        const events = run.localAgent?.session.events ?? []
-        eventCount = events.length
-        eventTypes = [...new Set(events.map(event => event.type))]
-        const lastEnd = [...events].reverse().find(event => event.type === 'turn/end')
-        if (lastEnd !== undefined) {
-          turnEndReason = ((lastEnd as { data?: { reason?: unknown } }).data ?? {}).reason
-        }
-        if (output === '' && result.stopReason === 'error') {
-          // The child's turn errored without a final assistant text: surface
-          // the failure detail from the event log so the pet can report it.
-          for (const event of [...events].reverse()) {
-            const data = (event as { data?: Record<string, unknown> }).data ?? {}
-            if (event.type === 'tool/result' && (data as { error?: unknown }).error !== undefined) {
-              const error = (data as { error: { name?: string; code?: string } }).error
-              output = `子代理的工具出错：${error.name ?? ''} ${error.code ?? ''}`.trim()
-              break
-            }
-            if (event.type === 'turn/end') {
-              const reason = (data as { reason?: { kind?: string; failure?: { code?: string; message?: string } } }).reason
-              if (reason?.kind === 'error') {
-                output = `子代理回合出错：${reason.failure?.code ?? 'unknown'} ${reason.failure?.message ?? ''}`.trim().slice(0, 300)
-                break
-              }
-            }
-          }
-        }
+        child.followup(createUserMessage({
+          content: [{ type: 'text', text: taskPersona(prompt) }],
+          source: { kind: 'user' },
+        }))
+        await child.whenIdle()
+        stopReason = 'completed'
       } catch (error) {
-        completed = false
-        output = error instanceof Error ? error.message : String(error)
+        stopReason = error instanceof Error ? error.message : String(error)
+      } finally {
+        signal.removeEventListener('abort', onAbort)
+      }
+      const events = child.session.events
+      const reason = turnEndReasonOf(events)
+      const reasonKind = typeof reason === 'object' && reason !== null && (reason as { kind?: unknown }).kind === 'error' ? 'error' : 'completed'
+      let output = finalAssistantText(events).slice(0, TASK_OUTPUT_LIMIT)
+      if (output === '' && reasonKind === 'error') {
+        // Surface the failure detail instead of an empty bubble.
+        const failure = (reason as { error?: { message?: string; code?: string } } | undefined)?.error
+        output = failure !== undefined
+          ? `子代理回合出错：${failure.code ?? ''} ${failure.message ?? ''}`.trim().slice(0, 300)
+          : '子代理回合出错'
       }
       const response: TaskResponse = {
         output,
-        sessionId: run.id,
-        completed,
-        debug: { stopReason, eventCount, eventTypes, turnEndReason },
+        sessionId: child.session.id,
+        completed: reasonKind === 'completed' && output !== '',
+        debug: {
+          stopReason,
+          eventCount: events.length,
+          eventTypes: [...new Set(events.map(event => event.type))],
+          turnEndReason: reason,
+        },
       }
       sendJson(res, 200, response)
     } catch (error) {
       sendJson(res, 502, { error: error instanceof Error ? error.message.slice(0, 300) : String(error) })
     }
+    // Deliberately NOT disposing the child: it stays in the session store and
+    // the workspace session list so the user can open the conversation.
   }
 }

@@ -28,6 +28,26 @@ describe('deriveWhaleActivity', () => {
     expect(deriveWhaleActivity(now, { active: true, running: true, turnStartedAt: now - 21_000, lastActivityAt: now, userTyping: false })).toEqual({ mood: 'focused', intensity: 1 })
   })
 
+  it('derives awaiting over working when a user interaction is pending', () => {
+    const now = 100_000
+    expect(deriveWhaleActivity(now, {
+      active: true,
+      running: true,
+      turnStartedAt: now - 21_000,
+      lastActivityAt: now,
+      userTyping: false,
+      pendingInteraction: 'approval',
+    })).toEqual({ mood: 'awaiting', intensity: 1 })
+    expect(deriveWhaleActivity(now, {
+      active: false,
+      running: false,
+      turnStartedAt: 0,
+      lastActivityAt: now - 61_000,
+      userTyping: true,
+      pendingInteraction: 'question',
+    })).toEqual({ mood: 'awaiting', intensity: 1 })
+  })
+
   it('falls asleep only after a long quiet period', () => {
     const now = 100_000
     expect(deriveWhaleActivity(now, { active: false, running: false, turnStartedAt: 0, lastActivityAt: now - 10_000, userTyping: false })).toEqual({ mood: 'idle', intensity: 0 })
@@ -57,7 +77,10 @@ describe('SessionWhaleObserver', () => {
   })
 
   function setup() {
-    const list = createObservable<{ current?: string }>({ current: 'session-1' })
+    const list = createObservable<{
+      current?: string
+      byId?: Record<string, { pendingInteraction?: 'approval' | 'plan-review' | 'question' }>
+    }>({ current: 'session-1' })
     const conversation = createObservable({
       running: false,
       partial: null as { blocks: readonly unknown[] } | null,
@@ -454,6 +477,43 @@ describe('SessionWhaleObserver', () => {
     })
     vi.advanceTimersByTime(200)
     expect(observer.getProgress()).toMatchObject({ active: false, running: false })
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('maps a pending approval to awaiting even while the turn is still running', () => {
+    const { conversation, list, observer, service } = setup()
+    observer.start()
+
+    conversation.set({
+      running: true,
+      partial: { blocks: [1] },
+      runningCalls: [{ name: 'bash' }],
+      nodes: [],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('working')
+
+    list.set({
+      current: 'session-1',
+      byId: { 'session-1': { pendingInteraction: 'approval' } },
+    })
+    vi.advanceTimersByTime(200)
+
+    expect(service.getSnapshot().activity.mood).toBe('awaiting')
+    expect(observer.getProgress()).toMatchObject({ pendingInteraction: 'approval' })
+
+    service.nextRecap()
+    expect(service.getSnapshot().recap?.text).toBe('有个审批等你拍板')
+
+    list.set({
+      current: 'session-1',
+      byId: { 'session-1': {} },
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('working')
 
     observer.dispose()
     service.dispose()

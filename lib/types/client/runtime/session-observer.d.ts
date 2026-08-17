@@ -8,14 +8,18 @@
  * the derivation logic can be unit-tested with plain fixtures.
  */
 import type { WhaleActivity, WhaleEffectKind } from '../activity.ts';
-import type { WhaleSessionProgress } from '../progress.ts';
+import { type WhalePendingInteraction, type WhaleSessionProgress } from '../progress.ts';
 import { WhalePetService } from './whale-pet-service.ts';
 export interface ObservableLike<T> {
     getSnapshot(): T;
     subscribe(listener: () => void): () => void;
 }
+interface SessionSummaryLike {
+    pendingInteraction?: WhalePendingInteraction;
+}
 interface SessionListLike {
     current?: string;
+    byId?: Record<string, SessionSummaryLike>;
 }
 interface ConversationLike {
     running: boolean;
@@ -63,6 +67,7 @@ export declare function deriveWhaleActivity(now: number, state: {
     turnStartedAt: number;
     lastActivityAt: number;
     userTyping: boolean;
+    pendingInteraction?: WhalePendingInteraction;
 }): WhaleActivity;
 export declare class SessionWhaleObserver {
     private readonly ctx;
@@ -87,6 +92,7 @@ export declare class SessionWhaleObserver {
     private boundAt;
     private lastNodeCount;
     private userTyping;
+    private lastPending;
     private disposed;
     constructor(ctx: WhaleSessionClientContext, service: WhalePetService);
     /**

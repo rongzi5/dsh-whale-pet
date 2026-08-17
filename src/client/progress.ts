@@ -8,6 +8,16 @@
  * chats are not disturbed.
  */
 
+/** Session-list amber-dot: the user action currently blocking progress. */
+export type WhalePendingInteraction = 'approval' | 'plan-review' | 'question'
+
+/** One-line bubble / recap for a pending user interaction. */
+export function pendingInteractionToText(kind: WhalePendingInteraction): string {
+  if (kind === 'approval') return '有个审批等你拍板'
+  if (kind === 'plan-review') return '有个计划等你过目'
+  return '有个问题等你回答'
+}
+
 /** One read-only snapshot of the bound session's live state. */
 export interface WhaleSessionProgress {
   /** Session id this snapshot belongs to (for the fine-grained host fetch). */
@@ -28,6 +38,8 @@ export interface WhaleSessionProgress {
   goalPhase?: string
   /** Whether a plan is active, when bound. */
   planActive?: boolean
+  /** User interaction currently blocking this session (sidebar amber-dot). */
+  pendingInteraction?: WhalePendingInteraction
   /** Fine-grained: current step number within the turn (host event log). */
   step?: number
   /** Fine-grained: human line for the latest activity (tool call / output). */
@@ -73,7 +85,9 @@ function elapsedMinutes(startedAt: number, now = Date.now()): number {
  * "正在深度思考…" / "刚跑完 bash".
  */
 export function progressToText(progress: WhaleSessionProgress | null): string | null {
-  if (progress === null || !progress.active) return null
+  if (progress === null) return null
+  if (progress.pendingInteraction !== undefined) return pendingInteractionToText(progress.pendingInteraction)
+  if (!progress.active) return null
   if (progress.running) {
     const job = progress.jobs?.[0]
     if (job !== undefined) {
@@ -98,11 +112,15 @@ export function progressToText(progress: WhaleSessionProgress | null): string | 
  * can truthfully answer "进度如何了" without ever touching the session.
  */
 export function buildProgressContext(progress: WhaleSessionProgress | null): string | null {
-  if (progress === null || !progress.active) return null
+  if (progress === null) return null
+  if (!progress.active && progress.pendingInteraction === undefined) return null
   const lines: string[] = [
     '当前 DSH 会话状态（这是桌宠实时探寻到的真实数据）：',
     '如果用户询问进度，请引用下面的具体数据（第几步、正在运行的命令/工具、最新动态、最近结果、后台任务输出），不要泛泛而谈；回答进度问题时可以超过 60 字。',
   ]
+  if (progress.pendingInteraction !== undefined) {
+    lines.push(`- 正在等待用户：${pendingInteractionToText(progress.pendingInteraction)}`)
+  }
   if (progress.running) {
     const tools = progress.tools.length > 0 ? progress.tools.join('、') : undefined
     const minutes = Math.max(1, Math.round(progress.turnMs / 60_000))

@@ -340,7 +340,7 @@ export class WhaleMotionController {
             ? 2.5
             : this.activity.mood === 'celebrating'
               ? 4
-              : this.activity.mood === 'listening'
+              : this.activity.mood === 'listening' || this.activity.mood === 'awaiting'
                 ? 1.6
                 : 1
           this.nextLook -= dt * activePace
@@ -396,7 +396,7 @@ export class WhaleMotionController {
 
     if (!this.dragging && this.mode !== 'patrol' && this.mode !== 'loop') {
       const mood = this.activity.mood
-      const sessionFocused = isSessionEngaged(mood) || mood === 'listening'
+      const sessionFocused = isSessionEngaged(mood) || mood === 'listening' || mood === 'awaiting'
       if (this.hovering || this.lookTime > 0) {
         this.setDesiredYaw(this.directionYaw(this.pointerX - centerX, this.pointerY - centerY))
         const lookPitch = clamp((this.pointerY - centerY) / PET_HEIGHT * 0.2, -0.2, 0.2)

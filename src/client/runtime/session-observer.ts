@@ -9,7 +9,7 @@
  */
 
 import type { WhaleActivity, WhaleEffectKind } from '../activity.ts'
-import type { WhaleSessionProgress } from '../progress.ts'
+import { pendingInteractionToText, type WhalePendingInteraction, type WhaleSessionProgress } from '../progress.ts'
 import { WhalePetService } from './whale-pet-service.ts'
 
 const POLL_MS = 200
@@ -26,8 +26,13 @@ export interface ObservableLike<T> {
   subscribe(listener: () => void): () => void
 }
 
+interface SessionSummaryLike {
+  pendingInteraction?: WhalePendingInteraction
+}
+
 interface SessionListLike {
   current?: string
+  byId?: Record<string, SessionSummaryLike>
 }
 
 interface ConversationLike {
@@ -181,8 +186,14 @@ export function deriveWhaleActivity(
     turnStartedAt: number
     lastActivityAt: number
     userTyping: boolean
+    pendingInteraction?: WhalePendingInteraction
   },
 ): WhaleActivity {
+  // A pending user interaction (approval / question / plan-review) wins over
+  // working/thinking: the turn is often still marked running while the agent
+  // is blocked on the user. The pet should stare at the input, not swim as if
+  // it were still executing.
+  if (state.pendingInteraction !== undefined) return { mood: 'awaiting', intensity: 1 }
   if (state.active) {
     const runningMs = state.running ? now - state.turnStartedAt : 0
     if (runningMs >= FOCUS_AFTER_MS) return { mood: 'focused', intensity: 1 }
@@ -219,6 +230,7 @@ export class SessionWhaleObserver {
   private boundAt = 0
   private lastNodeCount = -1
   private userTyping = false
+  private lastPending: WhalePendingInteraction | undefined
   private disposed = false
 
   public constructor(
@@ -289,6 +301,7 @@ export class SessionWhaleObserver {
       .slice(0, 5)
     const lastNode = snapshot.nodes[snapshot.nodes.length - 1]
     const lastTool = lastNode?.call?.name
+    const pending = readPendingInteraction(this.sessions, this.sessionId)
     return {
       sessionId: this.sessionId,
       active,
@@ -299,6 +312,7 @@ export class SessionWhaleObserver {
       ...(lastTool !== undefined ? { lastTool } : {}),
       ...(this.knownGoalPhase !== undefined ? { goalPhase: this.knownGoalPhase } : {}),
       ...(this.knownPlanActive !== undefined ? { planActive: this.knownPlanActive } : {}),
+      ...(pending !== undefined ? { pendingInteraction: pending } : {}),
     }
   }
 
@@ -359,6 +373,7 @@ export class SessionWhaleObserver {
       this.lastNodeCount = -1
       this.knownGoalPhase = undefined
       this.knownPlanActive = undefined
+      this.lastPending = undefined
       this.transient = null
       this.boundAt = 0
       if (current === undefined) {
@@ -482,12 +497,20 @@ export class SessionWhaleObserver {
       this.transient = null
     }
 
+    const pending = readPendingInteraction(sessions, this.sessionId)
+    if (pending !== undefined) this.lastActivityAt = now
+    if (pending !== this.lastPending) {
+      if (pending !== undefined) this.service.pushRecap(pendingInteractionToText(pending))
+      this.lastPending = pending
+    }
+
     const mood = deriveWhaleActivity(now, {
       active,
       running: snapshot.running,
       turnStartedAt: this.turnStartedAt,
       lastActivityAt: this.lastActivityAt,
       userTyping: this.userTyping,
+      ...(pending !== undefined ? { pendingInteraction: pending } : {}),
     })
 
     // Thinking/working/focused keeps a slow stream of bubbles so the
@@ -523,6 +546,22 @@ export class SessionWhaleObserver {
     this.service.setActivity({ mood: 'celebrating', intensity: 1 })
     this.service.celebrate()
   }
+}
+
+function readPendingInteraction(
+  sessions: SessionsLike,
+  sessionId: string | undefined,
+): WhalePendingInteraction | undefined {
+  if (sessionId === undefined) return undefined
+  let list: SessionListLike
+  try {
+    list = sessions.list.getSnapshot()
+  } catch {
+    return undefined
+  }
+  const pending = list.byId?.[sessionId]?.pendingInteraction
+  if (pending === 'approval' || pending === 'plan-review' || pending === 'question') return pending
+  return undefined
 }
 
 function safeProjection(session: SessionFaceLike, key: string): ObservableLike<unknown> | null {

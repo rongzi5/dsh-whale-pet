@@ -7,6 +7,10 @@
  * This never writes to the DSH session — the pet only reads progress so long
  * chats are not disturbed.
  */
+/** Session-list amber-dot: the user action currently blocking progress. */
+export type WhalePendingInteraction = 'approval' | 'plan-review' | 'question';
+/** One-line bubble / recap for a pending user interaction. */
+export declare function pendingInteractionToText(kind: WhalePendingInteraction): string;
 /** One read-only snapshot of the bound session's live state. */
 export interface WhaleSessionProgress {
     /** Session id this snapshot belongs to (for the fine-grained host fetch). */
@@ -27,6 +31,8 @@ export interface WhaleSessionProgress {
     goalPhase?: string;
     /** Whether a plan is active, when bound. */
     planActive?: boolean;
+    /** User interaction currently blocking this session (sidebar amber-dot). */
+    pendingInteraction?: WhalePendingInteraction;
     /** Fine-grained: current step number within the turn (host event log). */
     step?: number;
     /** Fine-grained: human line for the latest activity (tool call / output). */

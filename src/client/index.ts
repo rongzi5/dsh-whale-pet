@@ -22,7 +22,7 @@ export const inject = ['slots', 'sessions']
 
 /** Mount the runtime service and register one additive shell-overlay entry. */
 export function apply(ctx: ClientContext): void {
-  console.debug('[ui-whale-pet] client loaded (features: probe, report-mode, task-dispatch)')
+  console.debug('[ui-whale-pet] client loaded (features: probe, report-mode, task-dispatch, awaiting)')
   const whalePet = new WhalePetService(browserStorage())
   const observer = new SessionWhaleObserver(ctx as unknown as WhaleSessionClientContext, whalePet)
   whalePet.bindObserver(observer)

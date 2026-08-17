@@ -289,7 +289,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     onContextMenu: openMenu,
   }
   const sleeping = snapshot.activity.mood === 'sleeping'
-  const listening = snapshot.activity.mood === 'listening'
+  const listening = snapshot.activity.mood === 'listening' || snapshot.activity.mood === 'awaiting'
   const hearts = snapshot.effects.filter(effect => effect.kind === 'heart')
   const bubbles = snapshot.effects.filter(effect => effect.kind === 'bubble')
   const sweat = snapshot.effects.filter(effect => effect.kind === 'sweat')

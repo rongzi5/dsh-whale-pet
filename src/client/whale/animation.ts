@@ -113,7 +113,7 @@ export class WhaleAnimator {
             ? 1.5 + 0.25 * intensity
             : mood === 'celebrating'
               ? 1.7
-              : mood === 'listening'
+              : mood === 'listening' || mood === 'awaiting'
                 ? 0.85
                 : 1
     let swimSpeed = CFG.SWIM_SPEED * (1 + this.f.speed * 1.55)
@@ -126,7 +126,7 @@ export class WhaleAnimator {
       mood === 'sleeping' ? 0.35
         : mood === 'working' || mood === 'focused' ? 1.25
           : mood === 'celebrating' ? 1.4
-            : mood === 'listening' ? 0.8
+            : mood === 'listening' || mood === 'awaiting' ? 0.8
               : 1
     )
     const pitchAmp = CFG.PITCH_AMPLITUDE * (mood === 'sleeping' ? 0.4 : 1)
@@ -185,7 +185,7 @@ export class WhaleAnimator {
     const pecAmp = CFG.PEC_FLAP_AMPLITUDE * (
       mood === 'sleeping' ? 0.3
         : mood === 'working' || mood === 'focused' ? 1.3
-          : mood === 'listening' ? 0.8
+          : mood === 'listening' || mood === 'awaiting' ? 0.8
             : 1
     )
     const pecFlap = Math.sin(this.swimPhase + CFG.PEC_FLAP_PHASE) * pecAmp
@@ -199,7 +199,7 @@ export class WhaleAnimator {
     const floatAmp = CFG.FLOAT_AMPLITUDE * (
       mood === 'sleeping' ? 0.4
         : mood === 'celebrating' ? 1.5
-          : mood === 'listening' ? 0.8
+          : mood === 'listening' || mood === 'awaiting' ? 0.8
             : 1
     )
     const floatOffset = Math.sin(t * floatSpeed) * floatAmp

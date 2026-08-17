@@ -21,6 +21,8 @@ export type WhaleMood =
   | 'sleeping'
   /** The user is composing a reply in the chat input. */
   | 'listening'
+  /** The session is blocked on the user (approval, question, or plan review). */
+  | 'awaiting'
 
 export interface WhaleActivity {
   mood: WhaleMood
@@ -69,7 +71,7 @@ export const IDLE_ACTIVITY: WhaleActivity = Object.freeze({ mood: 'idle', intens
  * the look/patrol clocks, keep patrols near an edge).
  */
 export const ACTIVE_MOODS: ReadonlySet<WhaleMood> = Object.freeze(
-  new Set<WhaleMood>(['thinking', 'working', 'focused', 'celebrating']),
+  new Set<WhaleMood>(['thinking', 'working', 'focused', 'celebrating', 'awaiting']),
 )
 
 /**
@@ -78,7 +80,7 @@ export const ACTIVE_MOODS: ReadonlySet<WhaleMood> = Object.freeze(
  * does not keep staring at the input box.
  */
 export const SESSION_ENGAGED_MOODS: ReadonlySet<WhaleMood> = Object.freeze(
-  new Set<WhaleMood>(['thinking', 'working', 'focused']),
+  new Set<WhaleMood>(['thinking', 'working', 'focused', 'awaiting']),
 )
 
 export function isActiveMood(mood: WhaleMood): boolean {

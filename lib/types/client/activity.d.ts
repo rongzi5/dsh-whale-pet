@@ -19,7 +19,9 @@ export type WhaleMood =
 /** No activity for a long time. */
  | 'sleeping'
 /** The user is composing a reply in the chat input. */
- | 'listening';
+ | 'listening'
+/** The session is blocked on the user (approval, question, or plan review). */
+ | 'awaiting';
 export interface WhaleActivity {
     mood: WhaleMood;
     /** 0..1 strength of the mood; sleep/error use it as a transient display weight. */

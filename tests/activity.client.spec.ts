@@ -18,6 +18,7 @@ const ALL_MOODS: readonly WhaleMood[] = [
   'error',
   'sleeping',
   'listening',
+  'awaiting',
 ]
 
 /** The one place that spells out the intended classification by hand. */
@@ -30,6 +31,7 @@ const ACTIVE_EXPECTATION: Readonly<Record<WhaleMood, boolean>> = {
   error: false,
   sleeping: false,
   listening: false,
+  awaiting: true,
 }
 
 const ENGAGED_EXPECTATION: Readonly<Record<WhaleMood, boolean>> = {
@@ -41,6 +43,7 @@ const ENGAGED_EXPECTATION: Readonly<Record<WhaleMood, boolean>> = {
   error: false,
   sleeping: false,
   listening: false,
+  awaiting: true,
 }
 
 describe('activity mood vocabulary', () => {

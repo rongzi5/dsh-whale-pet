@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildProgressContext, progressToText, type WhaleSessionProgress } from '../src/client/progress.ts'
+import { buildProgressContext, pendingInteractionToText, progressToText, type WhaleSessionProgress } from '../src/client/progress.ts'
 
 const BUSY: WhaleSessionProgress = {
   active: true,
@@ -43,12 +43,32 @@ describe('progressToText', () => {
     expect(progressToText({ ...BUSY, tools: ['something-unknown'] })).toBe('正在忙活（something-unknown），已经 3 分钟')
   })
 
+  it('prefers a pending user interaction over running tools', () => {
+    expect(progressToText({ ...BUSY, pendingInteraction: 'approval' })).toBe('有个审批等你拍板')
+    expect(progressToText({
+      active: false,
+      running: false,
+      tools: [],
+      turnMs: 0,
+      nodeCount: 0,
+      pendingInteraction: 'question',
+    })).toBe('有个问题等你回答')
+  })
+
   it('prefers a running background job over the in-flight tool', () => {
     const withJob = {
       ...BUSY,
       jobs: [{ label: 'npm run build', startedAt: Date.now() - 300_000, outputTail: '进度 45%' }],
     }
     expect(progressToText(withJob)).toBe('正在后台跑 npm run build（已 5 分钟）')
+  })
+})
+
+describe('pendingInteractionToText', () => {
+  it('names each pending kind in the bubble voice', () => {
+    expect(pendingInteractionToText('approval')).toBe('有个审批等你拍板')
+    expect(pendingInteractionToText('plan-review')).toBe('有个计划等你过目')
+    expect(pendingInteractionToText('question')).toBe('有个问题等你回答')
   })
 })
 
@@ -81,5 +101,17 @@ describe('buildProgressContext', () => {
   it('returns null when nothing is active', () => {
     expect(buildProgressContext(null)).toBeNull()
     expect(buildProgressContext({ ...BUSY, active: false })).toBeNull()
+  })
+
+  it('reports a pending user interaction even when the turn looks idle', () => {
+    const block = buildProgressContext({
+      active: false,
+      running: false,
+      tools: [],
+      turnMs: 0,
+      nodeCount: 0,
+      pendingInteraction: 'plan-review',
+    })
+    expect(block).toContain('正在等待用户：有个计划等你过目')
   })
 })

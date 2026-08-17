@@ -101,12 +101,13 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
 | 工具失败（非零退出码或错误节点） | `error`：连续冒汗 + 身体颤抖 + 红色"！"脉冲标记 + 瞪眼，持续 3 秒 |
 | 长任务完成（≥15s）、goal 完成或退出 plan | `celebrating`：沿大椭圆 360° 绕圈，yaw 连续旋转并带近大远小深度，同时每 650ms 冒爱心 |
 | 你在输入框聚焦/打字（准备回复） | `listening`：看向输入区、头顶漂浮 "？"，点击会回顾"在呢，我听着～" |
+| 会话卡在等你（`pendingInteraction`：审批 / 提问 / 计划过目） | `awaiting`：同样看向输入区并冒 "？"；点击回顾「有个审批等你拍板」/「有个问题等你回答」/「有个计划等你过目」。压过 `working`，因为卡住时回合往往仍标成 running |
 | 睡觉时悬停或拖拽 | 立即醒来并重置空闲计时 |
 | 60s 无活动 | `sleeping`：闭眼、呼吸和游动变慢、显示 z-z-z |
 
 桌宠元素上的调试属性：
 
-- `data-whale-activity` — 当前情绪（`idle`、`thinking`、`working`、`focused`、`celebrating`、`error`、`sleeping`、`listening`）
+- `data-whale-activity` — 当前情绪（`idle`、`thinking`、`working`、`focused`、`celebrating`、`error`、`sleeping`、`listening`、`awaiting`）
 - `data-whale-bridge` — 会话桥接状态（`off`、`waiting`、`bound`）
 
 ## 安装

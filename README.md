@@ -126,12 +126,13 @@ reaction.
 | Tool fails (non-zero exit code or error node) | `error`: pouring sweat drops, a trembling body, a pulsing red "！" mark and wide eyes for 3s |
 | Long turn (≥15s), goal completion, or plan exit | `celebrating`: a 360° elliptical lap with continuous yaw and screen-space depth, while hearts stream every 650ms |
 | You are composing a reply in the chat input | `listening`: gazes at the input area, shows a floating "？", and recaps "在呢，我听着～" on click |
+| Session is blocked on you (`pendingInteraction`: approval / question / plan-review) | `awaiting`: same gaze and "？" as listening; click recaps "有个审批等你拍板" / "有个问题等你回答" / "有个计划等你过目". Wins over `working` because the turn often stays marked running. |
 | Hover or drag while sleeping | Wakes immediately and resets the idle clock |
 | No activity for 60s | `sleeping`: closed eyes, slow breathing, z-z-z |
 
 Debug attributes on the pet element:
 
-- `data-whale-activity` — current mood (`idle`, `thinking`, `working`, `focused`, `celebrating`, `error`, `sleeping`, `listening`)
+- `data-whale-activity` — current mood (`idle`, `thinking`, `working`, `focused`, `celebrating`, `error`, `sleeping`, `listening`, `awaiting`)
 - `data-whale-bridge` — session bridge state (`off`, `waiting`, `bound`)
 
 ## Installation

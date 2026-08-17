@@ -71,8 +71,8 @@ export declare function buildSystemPrompt(memory: WhaleMemory, meta: {
 export declare function extractFacts(reply: string): string[];
 /**
  * Pull first-person facts out of the user's own message so memory does not
- * depend on the model emitting `[记住]`. Models under the 60-char persona
- * often say "记住了" without the marker.
+ * depend on the model emitting `[记住]`. The spoken bubble is still
+ * capped at 60 chars, so some models skip the marker.
  */
 export declare function extractUserFacts(input: string): string[];
 /** Strip `[记住] ...` marker lines so they never show in the bubble. */

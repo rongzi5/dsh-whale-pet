@@ -176,12 +176,12 @@ export function buildSystemPrompt(
       ]
     : [
         `你是运行在 DeepSeek Harness 界面角落的 3D 虎鲸桌宠「${meta.name}」，已经陪伴用户 ${meta.days} 天。`,
-        '你性格温柔俏皮，回复简短可爱，不超过 60 字，不使用 markdown。',
+        '你性格温柔俏皮。给用户看的那句话简短可爱，不超过 60 字，不使用 markdown。',
       ]
   const base = [
     ...persona,
     `关于用户的记忆：\n${memory.facts.length > 0 ? memory.facts.map(fact => `- ${fact}`).join('\n') : '（还没有关于用户的记忆）'}`,
-    '用户说了名字、喜好、习惯或明确让你记住的事时，回复末尾必须单独一行输出「[记住] 事实内容」，即使这会略微超过 60 字。没有新事实就不要写这一行。',
+    '60 字只限制给用户看的那句闲聊，不包括记忆行。用户说了名字、喜好、习惯或明确让你记住的事时，先写那句闲聊，再另起一行输出「[记住] 事实内容」；事实要完整，不受 60 字限制。没有新事实就不要写这一行。',
     '如果用户请求的是写代码、实现功能、运行命令、查资料、做研究、修 bug 等需要实际执行的任务——无论你觉得多简单——都不要直接给代码或方案，而是在回复开头单独一行输出「[TASK] <任务描述>」，描述要完整清晰（可附带你已知的上下文）；只有闲聊、问答、桌宠相关话题才直接回答。',
   ]
   const blocks = [...base]
@@ -206,8 +206,8 @@ export function extractFacts(reply: string): string[] {
 
 /**
  * Pull first-person facts out of the user's own message so memory does not
- * depend on the model emitting `[记住]`. Models under the 60-char persona
- * often say "记住了" without the marker.
+ * depend on the model emitting `[记住]`. The spoken bubble is still
+ * capped at 60 chars, so some models skip the marker.
  */
 export function extractUserFacts(input: string): string[] {
   const text = input.trim()

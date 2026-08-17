@@ -75,7 +75,8 @@ panel lists those facts, lets you delete one, or type a new one. The chat box
 itself stays history-free. Facts arrive three ways: the model may still emit a
 `[记住] <fact>` line, the coordinator also extracts first-person statements
 from the user ("我叫… / 我喜欢… / 记住：…"), and the panel can add a fact
-directly. Marker lines are stripped before the bubble is shown.
+directly. The 60-character cap applies only to the spoken bubble, not the
+`[记住]` line. Marker lines are stripped before the bubble is shown.
 While a request is in flight the pet holds the `thinking` mood (an external
 override the session observer respects) and reacts with an error mood and sweat
 drops if the proxy is unreachable or unconfigured (no key → HTTP 503).

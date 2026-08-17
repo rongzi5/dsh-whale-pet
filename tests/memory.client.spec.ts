@@ -54,6 +54,8 @@ describe('buildSystemPrompt', () => {
   it('switches to report mode for progress questions', () => {
     const cute = buildSystemPrompt({ facts: [], turns: [] }, META)
     expect(cute).toContain('简短可爱')
+    expect(cute).toContain('60 字只限制给用户看的那句闲聊')
+    expect(cute).toContain('不受 60 字限制')
     const reporting = buildSystemPrompt({ facts: [], turns: [] }, META, null, true)
     expect(reporting).toContain('汇报模式')
     expect(reporting).toContain('不卖萌、不省略数字')

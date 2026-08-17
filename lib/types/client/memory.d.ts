@@ -76,3 +76,5 @@ export declare function buildChatMessages(memory: WhaleMemory, meta: {
     name: string;
     days: number;
 }, input: string, progress?: WhaleSessionProgress | null, progressQuery?: boolean): WhaleChatMessage[];
+/** Remove one remembered fact (exact match after trim). Returns the next memory. */
+export declare function forgetFact(memory: WhaleMemory, fact: string): WhaleMemory;

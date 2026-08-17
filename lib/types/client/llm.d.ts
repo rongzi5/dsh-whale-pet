@@ -48,6 +48,11 @@ export interface WhaleModelCatalog {
 /** The chat surface the coordinator depends on. */
 export interface WhaleChatTransport {
     postChat(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): Promise<string>;
+    /**
+     * Optional token stream. When present the coordinator updates the bubble
+     * incrementally; absent transports keep the one-shot `postChat` path.
+     */
+    streamChat?(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): AsyncIterable<string>;
     listModels(): Promise<WhaleModelCatalog>;
     /**
      * Optional fine-grained session progress from the host event log. Absent
@@ -80,5 +85,7 @@ export declare const PROGRESS_TIMEOUT_MS = 1500;
 /** Task dispatch may run a real child agent; outlast the host timeout so the
  * "still running" response (with the child session id) reaches the pet. */
 export declare const TASK_TIMEOUT_MS = 70000;
+/** Parse `text/event-stream` chat deltas from the host proxy. */
+export declare function readSseDeltas(body: ReadableStream<Uint8Array>): AsyncIterable<string>;
 /** Default transport: same-origin fetch to the host-side chat proxy. */
 export declare const localChatTransport: WhaleChatTransport;

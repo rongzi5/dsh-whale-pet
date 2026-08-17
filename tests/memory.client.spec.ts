@@ -4,6 +4,7 @@ import {
   buildChatMessages,
   buildSystemPrompt,
   extractFacts,
+  forgetFact,
   loadWhaleMemory,
   rememberFacts,
   saveWhaleMemory,
@@ -155,6 +156,39 @@ describe('buildChatMessages', () => {
     const system = buildChatMessages(memory, META, '在吗')[0]?.content ?? ''
     expect(system).toContain('早前对话的压缩摘要')
     expect(system).toContain('早前聊过天气和午饭')
+  })
+})
+
+describe('forgetFact', () => {
+  it('removes exactly one matching fact and keeps other facts, turns and summary', () => {
+    const memory = {
+      facts: ['用户叫小明', '用户喜欢蓝色', '用户养了一只猫'],
+      turns: [
+        { role: 'user' as const, text: '你好' },
+        { role: 'assistant' as const, text: '你好呀' },
+      ],
+      summary: '早前聊过天气和午饭',
+    }
+    const next = forgetFact(memory, '用户喜欢蓝色')
+    expect(next.facts).toEqual(['用户叫小明', '用户养了一只猫'])
+    expect(next.turns).toEqual(memory.turns)
+    expect(next.summary).toBe('早前聊过天气和午饭')
+  })
+
+  it('matches after trimming the search text', () => {
+    const memory = { facts: ['用户叫小明'], turns: [] as Array<{ role: 'user' | 'assistant'; text: string }> }
+    expect(forgetFact(memory, '  用户叫小明  ').facts).toEqual([])
+  })
+
+  it('ignores blank facts and returns the memory unchanged', () => {
+    const memory = { facts: ['用户叫小明'], turns: [] as Array<{ role: 'user' | 'assistant'; text: string }> }
+    expect(forgetFact(memory, '   ')).toBe(memory)
+    expect(forgetFact(memory, '')).toBe(memory)
+  })
+
+  it('returns the same memory object when the fact is not present', () => {
+    const memory = { facts: ['用户叫小明'], turns: [] as Array<{ role: 'user' | 'assistant'; text: string }> }
+    expect(forgetFact(memory, '用户喜欢红色')).toBe(memory)
   })
 })
 

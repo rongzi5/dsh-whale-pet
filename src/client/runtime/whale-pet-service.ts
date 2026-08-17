@@ -9,7 +9,10 @@
 import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleBridgeState, type WhaleEffect, type WhaleEffectKind, type WhaleMood, type WhalePetViewSnapshot, type WhaleRecap } from '../activity.ts'
 import { WhalePetController, type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts'
 import type { SessionWhaleObserver } from './session-observer.ts'
-import { daysSince, loadWhalePetState, saveWhalePetState, type StorageLike, type WhalePetPersistedState } from '../persistence.ts'
+import { daysSince, loadWhalePetState, localDayKey, saveWhalePetState, type StorageLike, type WhalePetPersistedState } from '../persistence.ts'
+
+/** Clickable pet regions routed by the view to zone-specific reactions. */
+export type WhaleHitZone = 'body' | 'tail' | 'dorsal' | 'fin'
 
 const EFFECT_TTL_MS: Record<WhaleEffectKind, number> = {
   heart: 950,
@@ -108,6 +111,34 @@ export class WhalePetService {
     return this.controller.wasClick(maximumDrag)
   }
 
+  /**
+   * Handle a click that stayed under the drag threshold. The view routes
+   * each hit zone here; the body zone falls through so the view keeps its
+   * original click behavior (progress bubble / recap cycle).
+   * @returns true when the zone click was handled; false for a real drag or
+   * the body zone (let the view run its own click handling).
+   */
+  public handleZoneClick(zone: WhaleHitZone): boolean {
+    if (this.disposed || !this.wasClick()) return false
+    switch (zone) {
+      case 'tail':
+        // 爱心 + 立刻巡游（下一档），不进入 celebration 绕圈。
+        this.playEffect('heart')
+        this.controller.patrolNow()
+        return true
+      case 'dorsal':
+        // 背鳍：立刻巡游。
+        this.controller.patrolNow()
+        return true
+      case 'fin':
+        this.playEffect('bubble')
+        return true
+      case 'body':
+        // 进度逻辑属于 view/chat，这里不处理，让 view 走原 click。
+        return false
+    }
+  }
+
   /** Replace the current mood; no-op for identical activity. */
   public setActivity(activity: WhaleActivity): void {
     if (sameActivity(this.activity, activity)) return
@@ -161,6 +192,22 @@ export class WhalePetService {
     this.controller.motionController.snapToCornerNow()
   }
 
+  /**
+   * One unsolicited greeting per local calendar day. Returns true when the
+   * bubble was shown so callers can skip a second nudge on the same day.
+   */
+  public greetOnceToday(now: number = Date.now()): boolean {
+    if (this.disposed || this.persisted.hidden) return false
+    const today = localDayKey(now)
+    if (this.persisted.lastGreetDay === today) return false
+    this.persisted.lastGreetDay = today
+    saveWhalePetState(this.storage, { lastGreetDay: today })
+    const days = daysSince(this.persisted.since, now)
+    const text = days <= 0 ? '今天也在～' : `又见面啦，第 ${days + 1} 天`
+    this.showBubble(text, 4_500)
+    return true
+  }
+
   /** Persist the pet position after a drag release. */
   public persistPosition(x: number, y: number): void {
     this.persisted.x = Math.round(x)
@@ -182,10 +229,15 @@ export class WhalePetService {
    * entering the session-event recap history. Truncated to a bubble-safe
    * length; the bubble auto-clears after `ttlMs`.
    */
-  public showBubble(text: string, ttlMs = RECAP_TTL_MS): void {
+  public showBubble(text: string, ttlMs = RECAP_TTL_MS, options?: { replace?: boolean }): void {
     if (this.disposed || text === '') return
-    this.recapCurrent = { id: this.nextRecapId, text: text.slice(0, BUBBLE_TEXT_LIMIT) }
-    this.nextRecapId += 1
+    const clipped = text.slice(0, BUBBLE_TEXT_LIMIT)
+    if (options?.replace === true && this.recapCurrent !== null) {
+      this.recapCurrent = { id: this.recapCurrent.id, text: clipped }
+    } else {
+      this.recapCurrent = { id: this.nextRecapId, text: clipped }
+      this.nextRecapId += 1
+    }
     this.publish()
     this.scheduleRecapClear(ttlMs)
   }

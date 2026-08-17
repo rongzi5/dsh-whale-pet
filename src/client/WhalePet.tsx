@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from 'react'
 import type { WhaleEffect } from './activity.ts'
-import { WhalePetService } from './runtime/whale-pet-service.ts'
+import { WhalePetService, type WhaleHitZone } from './runtime/whale-pet-service.ts'
 import type { WhalePetChat } from './runtime/whale-pet-chat.ts'
 import type { WhaleChatOptions, WhaleModelCatalog } from './llm.ts'
+import { forgetFact, loadWhaleMemory, saveWhaleMemory } from './memory.ts'
+import { browserStorage } from './persistence.ts'
 import styles from './WhalePet.module.css'
 
 export interface WhalePetProps {
@@ -20,7 +22,7 @@ interface WhaleMenuState {
 type ChatBoxState = WhaleMenuState
 
 const MENU_WIDTH = 156
-const MENU_HEIGHT = 176
+const MENU_HEIGHT = 200
 /** Ignore the click that browsers fire right after a context menu. */
 const CLICK_AFTER_CONTEXT_MENU_MS = 400
 /** How long the pet keeps listening after the input loses focus. */
@@ -33,6 +35,9 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
   return target.isContentEditable
 }
 
+/** Cut long display text to a bounded length; the full value rides in `title`. */
+const truncate = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max)}…` : text)
+
 /** The frame-wide interactive whale pet surface (view only). */
 export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.ReactElement {
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -40,11 +45,14 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const shadowRef = useRef<HTMLSpanElement | null>(null)
   const chatBoxRef = useRef<HTMLDivElement | null>(null)
+  const memoryBoxRef = useRef<HTMLDivElement | null>(null)
   const lastContextMenuAt = useRef(0)
   const [error, setError] = useState('')
   const [menu, setMenu] = useState<WhaleMenuState | null>(null)
   const [chatBox, setChatBox] = useState<ChatBoxState | null>(null)
   const [chatText, setChatText] = useState('')
+  const [memoryBox, setMemoryBox] = useState<WhaleMenuState | null>(null)
+  const [memoryFacts, setMemoryFacts] = useState<string[]>([])
   const [catalog, setCatalog] = useState<WhaleModelCatalog | null>(null)
   const [catalogError, setCatalogError] = useState('')
   const [modelKey, setModelKey] = useState('')
@@ -118,6 +126,26 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
       document.removeEventListener('keydown', onKey)
     }
   }, [chatBox])
+
+  // The memory panel closes on outside presses or Escape, mirroring the chat
+  // bubble (mousedown, so the opening menu-item click never closes it).
+  useEffect(() => {
+    if (memoryBox === null) return
+    const close = (event: MouseEvent): void => {
+      const target = event.target
+      if (target instanceof Node && memoryBoxRef.current !== null && memoryBoxRef.current.contains(target)) return
+      setMemoryBox(null)
+    }
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape') setMemoryBox(null)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [memoryBox])
 
   // Load the model catalog (and the persisted selection) when the bubble opens.
   useEffect(() => {
@@ -217,9 +245,10 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     whalePet.beginDrag(event.clientX, event.clientY)
   }
 
-  const click = (event: ReactMouseEvent<HTMLElement>): void => {
+  const clickZone = (zone: WhaleHitZone) => (event: ReactMouseEvent<HTMLElement>): void => {
     event.stopPropagation()
     if (Date.now() - lastContextMenuAt.current < CLICK_AFTER_CONTEXT_MENU_MS) return
+    if (whalePet.handleZoneClick(zone)) return
     if (whalePet.wasClick() === true) {
       // While the agent is busy, a click reports live progress ("正在跑
       // bash，已经 3 分钟") instead of cycling the recap history. The coarse
@@ -254,9 +283,24 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
 
   const chat = (): void => {
     if (whalePetChat === undefined || menu === null) return
+    setMemoryBox(null)
     setChatBox({ x: menu.x, y: menu.y })
     setChatText('')
     setCatalogError('')
+  }
+
+  const openMemory = (): void => {
+    if (menu === null) return
+    setChatBox(null)
+    setMemoryBox({ x: menu.x, y: menu.y })
+    setMemoryFacts(loadWhaleMemory(browserStorage()).facts)
+  }
+
+  const forget = (fact: string): void => {
+    const storage = browserStorage()
+    const next = forgetFact(loadWhaleMemory(storage), fact)
+    saveWhaleMemory(storage, next)
+    setMemoryFacts(next.facts)
   }
 
   const sendChat = (): void => {
@@ -281,13 +325,13 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     whalePet.nextRecap()
   }
 
-  const zoneEvents = {
+  const zoneEvents = (zone: WhaleHitZone) => ({
     onPointerEnter: pointerEnter,
     onPointerLeave: pointerLeave,
     onPointerDown: pointerDown,
-    onClick: click,
+    onClick: clickZone(zone),
     onContextMenu: openMenu,
-  }
+  })
   const sleeping = snapshot.activity.mood === 'sleeping'
   const listening = snapshot.activity.mood === 'listening' || snapshot.activity.mood === 'awaiting'
   const hearts = snapshot.effects.filter(effect => effect.kind === 'heart')
@@ -313,11 +357,11 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
           className={`${styles.hitZone} ${styles.hitBody}`}
           aria-label="DeepSeek 3D whale pet"
           onKeyDown={keyDown}
-          {...zoneEvents}
+          {...zoneEvents('body')}
         />
-        <div className={`${styles.hitZone} ${styles.hitTail}`} aria-hidden="true" {...zoneEvents} />
-        <div className={`${styles.hitZone} ${styles.hitDorsal}`} aria-hidden="true" {...zoneEvents} />
-        <div className={`${styles.hitZone} ${styles.hitFin}`} aria-hidden="true" {...zoneEvents} />
+        <div className={`${styles.hitZone} ${styles.hitTail}`} aria-hidden="true" {...zoneEvents('tail')} />
+        <div className={`${styles.hitZone} ${styles.hitDorsal}`} aria-hidden="true" {...zoneEvents('dorsal')} />
+        <div className={`${styles.hitZone} ${styles.hitFin}`} aria-hidden="true" {...zoneEvents('fin')} />
         {snapshot.recap !== null ? (
           <div key={snapshot.recap.id} className={styles.speech} role="status">
             {snapshot.recap.text}
@@ -364,6 +408,13 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
               和鲸鲸聊天…
             </button>
           ) : null}
+          <button
+            type="button"
+            className={styles.menuItem}
+            onClick={() => { setMenu(null); openMemory() }}
+          >
+            鲸鲸记得什么…
+          </button>
           <button type="button" className={styles.menuItem} onClick={() => { setMenu(null); rename() }}>命名…</button>
           <button
             type="button"
@@ -446,6 +497,37 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
               发送
             </button>
           </div>
+        </div>
+      ) : null}
+      {memoryBox !== null ? (
+        <div
+          ref={memoryBoxRef}
+          className={styles.memoryBox}
+          style={{ left: memoryBox.x, top: memoryBox.y }}
+          role="dialog"
+          aria-label="鲸鲸记得什么"
+          data-whale-memory="open"
+        >
+          <div className={styles.memoryTitle}>鲸鲸记得什么</div>
+          {memoryFacts.length === 0 ? (
+            <div className={styles.memoryEmpty}>还没有关于你的记忆</div>
+          ) : (
+            <ul className={styles.memoryList}>
+              {memoryFacts.map(fact => (
+                <li key={fact} className={styles.memoryItem}>
+                  <span className={styles.memoryFact} title={fact}>{truncate(fact, 80)}</span>
+                  <button
+                    type="button"
+                    className={styles.memoryDelete}
+                    aria-label={`忘记：${fact}`}
+                    onClick={() => forget(fact)}
+                  >
+                    删除
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : null}
     </div>

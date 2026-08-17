@@ -362,6 +362,85 @@
   cursor: default;
 }
 
+/* Memory panel: the facts the pet remembers, each with a delete button. */
+.memoryBox {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  max-width: 300px;
+  max-height: 320px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgb(77 107 254 / 28%);
+  background: rgb(255 255 255 / 97%);
+  box-shadow: 0 8px 24px rgb(18 27 62 / 18%);
+  pointer-events: auto;
+  animation: menu-pop 160ms ease-out;
+}
+
+.memoryTitle {
+  color: #23315e;
+  font: 700 12px/1.4 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.memoryList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.memoryItem {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.memoryFact {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #52618f;
+  font: 500 12px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.memoryDelete {
+  flex-shrink: 0;
+  border: 1px solid rgb(255 82 119 / 30%);
+  border-radius: 7px;
+  padding: 3px 8px;
+  background: rgb(255 82 119 / 9%);
+  color: #d63a5e;
+  font: 600 11px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+
+.memoryDelete:hover,
+.memoryDelete:focus-visible {
+  background: rgb(255 82 119 / 16%);
+}
+
+.memoryDelete:focus-visible {
+  outline: 2px solid rgb(255 82 119 / 40%);
+  outline-offset: -1px;
+}
+
+.memoryEmpty {
+  padding: 10px 6px;
+  color: #8a94b8;
+  font: 500 12px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  text-align: center;
+}
+
 @keyframes heart-rise {
   0% {
     opacity: 0;

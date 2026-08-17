@@ -9,6 +9,8 @@ import { type WhaleActivity, type WhaleBridgeState, type WhaleEffectKind, type W
 import { type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts';
 import type { SessionWhaleObserver } from './session-observer.ts';
 import { type StorageLike } from '../persistence.ts';
+/** Clickable pet regions routed by the view to zone-specific reactions. */
+export type WhaleHitZone = 'body' | 'tail' | 'dorsal' | 'fin';
 export declare class WhalePetService {
     private readonly storage;
     private readonly controller;
@@ -43,6 +45,14 @@ export declare class WhalePetService {
     setHover(hovering: boolean): void;
     beginDrag(pointerX: number, pointerY: number): void;
     wasClick(maximumDrag?: number): boolean;
+    /**
+     * Handle a click that stayed under the drag threshold. The view routes
+     * each hit zone here; the body zone falls through so the view keeps its
+     * original click behavior (progress bubble / recap cycle).
+     * @returns true when the zone click was handled; false for a real drag or
+     * the body zone (let the view run its own click handling).
+     */
+    handleZoneClick(zone: WhaleHitZone): boolean;
     /** Replace the current mood; no-op for identical activity. */
     setActivity(activity: WhaleActivity): void;
     /** Update the session-bridge lifecycle state (observer-owned). */
@@ -57,6 +67,11 @@ export declare class WhalePetService {
     setSnapToCorner(enabled: boolean): void;
     /** Glide to the nearest corner immediately (context-menu action). */
     snapToCornerNow(): void;
+    /**
+     * One unsolicited greeting per local calendar day. Returns true when the
+     * bubble was shown so callers can skip a second nudge on the same day.
+     */
+    greetOnceToday(now?: number): boolean;
     /** Persist the pet position after a drag release. */
     persistPosition(x: number, y: number): void;
     /** Record one session/interaction event for the click recap (dedupes repeats). */
@@ -66,7 +81,9 @@ export declare class WhalePetService {
      * entering the session-event recap history. Truncated to a bubble-safe
      * length; the bubble auto-clears after `ttlMs`.
      */
-    showBubble(text: string, ttlMs?: number): void;
+    showBubble(text: string, ttlMs?: number, options?: {
+        replace?: boolean;
+    }): void;
     /**
      * Override the pet's mood from outside the session observer (e.g. chat
      * thinking). The observer checks {@link externalMood} every tick and lets it

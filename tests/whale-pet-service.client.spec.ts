@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { WhaleMotionController } from '../src/client/motion.ts'
 import { loadWhalePetState, type StorageLike } from '../src/client/persistence.ts'
 import { WhalePetService } from '../src/client/runtime/whale-pet-service.ts'
 
@@ -131,10 +132,73 @@ describe('WhalePetService', () => {
     expect(state.y).toBe(456)
   })
 
+  it('greets at most once per local day', () => {
+    const storage = new FakeStorage()
+    const service = new WhalePetService(storage)
+    const now = new Date(2026, 3, 7, 9, 0, 0).getTime()
+    expect(service.greetOnceToday(now)).toBe(true)
+    expect(service.getSnapshot().recap?.text).toContain('今天也在')
+    expect(service.greetOnceToday(now + 60_000)).toBe(false)
+    service.dispose()
+
+    const reloaded = new WhalePetService(storage)
+    expect(reloaded.greetOnceToday(now)).toBe(false)
+    expect(reloaded.greetOnceToday(now + 86_400_000)).toBe(true)
+    reloaded.dispose()
+  })
+
   it('ignores empty renames and keeps the previous name', () => {
     const service = new WhalePetService()
     service.setName('   ')
     expect(service.getSnapshot().name).toBe('鲸鲸')
+    service.dispose()
+  })
+})
+
+describe('WhalePetService.handleZoneClick', () => {
+  const motionOf = (service: WhalePetService): WhaleMotionController =>
+    (service as unknown as { controller: { motionController: WhaleMotionController } }).controller.motionController
+
+  it('blows a bubble on a fin click', () => {
+    const service = new WhalePetService()
+    expect(service.handleZoneClick('fin')).toBe(true)
+    expect(service.getSnapshot().effects.some(effect => effect.kind === 'bubble')).toBe(true)
+    service.dispose()
+  })
+
+  it('starts a patrol with a heart on a tail click', () => {
+    const service = new WhalePetService()
+    expect(service.handleZoneClick('tail')).toBe(true)
+    const snapshot = service.getSnapshot()
+    expect(snapshot.effects.some(effect => effect.kind === 'heart')).toBe(true)
+    expect(snapshot.effects.some(effect => effect.kind === 'bubble')).toBe(false)
+    // The next motion frame is already in patrol mode (1), not a loop.
+    expect(motionOf(service).step(1 / 60).mode).toBe(1)
+    service.dispose()
+  })
+
+  it('lets body clicks fall through to the view without extra effects', () => {
+    const service = new WhalePetService()
+    expect(service.handleZoneClick('body')).toBe(false)
+    expect(service.getSnapshot().effects).toHaveLength(0)
+    service.dispose()
+  })
+
+  it('starts an immediate patrol on a dorsal click', () => {
+    const service = new WhalePetService()
+    expect(() => service.handleZoneClick('dorsal')).not.toThrow()
+    // Patrol mode (1) is already active on the next motion frame.
+    expect(motionOf(service).step(1 / 60).mode).toBe(1)
+    service.dispose()
+  })
+
+  it('rejects zone clicks after a real drag', () => {
+    const service = new WhalePetService()
+    const motion = motionOf(service)
+    motion.beginDrag(100, 100)
+    motion.pointerMove(60, 100)
+    expect(service.handleZoneClick('fin')).toBe(false)
+    expect(service.getSnapshot().effects).toHaveLength(0)
     service.dispose()
   })
 })

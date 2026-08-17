@@ -78,6 +78,30 @@ describe('WhalePetChat', () => {
     service.dispose()
   })
 
+  it('grows the reply bubble as stream deltas arrive', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const seen: string[] = []
+    const transport: WhaleChatTransport = {
+      async postChat(): Promise<string> {
+        throw new Error('stream path should not fall back')
+      },
+      async *streamChat(): AsyncIterable<string> {
+        yield '你'
+        seen.push(service.getSnapshot().recap?.text ?? '')
+        yield '好呀！'
+      },
+      async listModels(): Promise<WhaleModelCatalog> {
+        return FAKE_CATALOG
+      },
+    }
+    const chat = new WhalePetChat(service, storage, transport)
+    await chat.ask('在吗')
+    expect(seen[0]).toBe('你')
+    expect(service.getSnapshot().recap?.text).toBe('你好呀！')
+    service.dispose()
+  })
+
   it('holds the thinking mood while the request is in flight', async () => {
     const service = new WhalePetService(new FakeStorage())
     const storage = new FakeStorage()
@@ -331,6 +355,16 @@ describe('WhalePetService external mood', () => {
     expect(service.getSnapshot().recap?.text).toBe('历史事件')
     service.dispose()
   })
+
+  it('replaces the current bubble text without reminting the recap id', () => {
+    const service = new WhalePetService(new FakeStorage())
+    service.showBubble('你')
+    const firstId = service.getSnapshot().recap?.id
+    service.showBubble('你好呀！', 1_000, { replace: true })
+    expect(service.getSnapshot().recap?.id).toBe(firstId)
+    expect(service.getSnapshot().recap?.text).toBe('你好呀！')
+    service.dispose()
+  })
 })
 
 describe('WhalePetChat task dispatch', () => {
@@ -385,7 +419,7 @@ describe('WhalePetChat task dispatch', () => {
   })
 })
 
-describe('WhalePetChat task intent fallback', () => {
+describe('WhalePetChat task intent heuristic', () => {
   it('detects execution intent even when the pet answers directly', () => {
     expect(taskIntent('写个冒泡排序')).toBe('写个冒泡排序')
     expect(taskIntent('帮我实现一个斐波那契')).toBe('帮我实现一个斐波那契')
@@ -393,7 +427,7 @@ describe('WhalePetChat task intent fallback', () => {
     expect(taskIntent('鲸鲸你叫什么')).toBeNull()
   })
 
-  it('dispatches the user request verbatim when intent matches but no [TASK] came back', async () => {
+  it('keeps the direct answer when intent matches but no [TASK] came back', async () => {
     const service = new WhalePetService(new FakeStorage())
     const storage = new FakeStorage()
     const taskCalls: Array<{ prompt: string }> = []
@@ -412,9 +446,39 @@ describe('WhalePetChat task intent fallback', () => {
     }
     const chat = new WhalePetChat(service, storage, transport)
     await chat.ask('写个冒泡排序')
-    expect(taskCalls).toHaveLength(1)
-    expect(taskCalls[0]?.prompt).toBe('写个冒泡排序')
-    expect(service.getSnapshot().recap?.text).toContain('bubble_sort.py')
+    // No [TASK] marker → no dispatch, even though the intent regex matches.
+    expect(taskCalls).toHaveLength(0)
+    expect(service.getSnapshot().recap?.text).toBe('搞定！这是冒泡排序的代码：...')
+    // The direct answer is persisted as a normal assistant turn.
+    expect(loadWhaleMemory(storage).turns.at(-1)?.text).toBe('搞定！这是冒泡排序的代码：...')
+    service.dispose()
+  })
+
+  it('does not call runTask when the pet answers with code but no [TASK]', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const taskCalls: Array<{ prompt: string }> = []
+    const transport: WhaleChatTransport = {
+      async postChat(): Promise<string> {
+        // Casual-chat style answer: the pet just hands over code.
+        return '搞定！\ndef bubble_sort(a):\n    return sorted(a)'
+      },
+      async listModels(): Promise<WhaleModelCatalog> {
+        return FAKE_CATALOG
+      },
+      async runTask(prompt): Promise<{ output: string; sessionId: string; completed: boolean }> {
+        taskCalls.push({ prompt })
+        return { output: '写好了', sessionId: 'child-3', completed: true }
+      },
+    }
+    const chat = new WhalePetChat(service, storage, transport)
+    await chat.ask('写个冒泡排序')
+    expect(taskCalls).toHaveLength(0)
+    expect(service.getSnapshot().recap?.text).toContain('def bubble_sort')
+    expect(loadWhaleMemory(storage).turns).toEqual([
+      { role: 'user', text: '写个冒泡排序' },
+      { role: 'assistant', text: '搞定！\ndef bubble_sort(a):\n    return sorted(a)' },
+    ])
     service.dispose()
   })
 })

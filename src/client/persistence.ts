@@ -19,6 +19,8 @@ export interface WhalePetPersistedState {
   y: number | null
   /** ISO timestamp of the first run; drives the "days together" recap. */
   since: string
+  /** Local calendar day (`YYYY-MM-DD`) of the last unsolicited greeting. */
+  lastGreetDay: string
 }
 
 export interface StorageLike {
@@ -36,6 +38,7 @@ export const WHALE_PET_DEFAULTS: Readonly<WhalePetPersistedState> = Object.freez
   x: null,
   y: null,
   since: '',
+  lastGreetDay: '',
 })
 
 function finiteNumber(value: unknown): number | null {
@@ -70,6 +73,7 @@ export function loadWhalePetState(storage: StorageLike | null): WhalePetPersiste
     x: finiteNumber(record.x),
     y: finiteNumber(record.y),
     since: typeof record.since === 'string' ? record.since : '',
+    lastGreetDay: typeof record.lastGreetDay === 'string' ? record.lastGreetDay : '',
   }
 }
 
@@ -93,6 +97,15 @@ export function browserStorage(): StorageLike | null {
   } catch {
     return null
   }
+}
+
+/** Local calendar day key used to rate-limit unsolicited greetings. */
+export function localDayKey(now: number = Date.now()): string {
+  const date = new Date(now)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 /** Whole days since the first run (0 on the first day, 0 for unknown dates). */

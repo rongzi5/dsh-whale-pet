@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   browserStorage,
   daysSince,
+  localDayKey,
   loadWhalePetState,
   saveWhalePetState,
   WHALE_PET_DEFAULTS,
@@ -100,5 +101,10 @@ describe('whale pet persistence', () => {
     expect(daysSince(new Date(now - 1000).toISOString(), now)).toBe(0)
     expect(daysSince(new Date(now - 2 * 86_400_000).toISOString(), now)).toBe(2)
     expect(daysSince(new Date(now + 86_400_000).toISOString(), now)).toBe(0)
+  })
+
+  it('formats the local calendar day for greeting rate limits', () => {
+    const now = new Date(2026, 3, 7, 9, 30, 0).getTime()
+    expect(localDayKey(now)).toBe('2026-04-07')
   })
 })

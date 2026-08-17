@@ -18,11 +18,14 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
 
 ## Interactions and persistence
 
-- **Click recap** — clicking the pet cycles a speech bubble through the name/days
-  entry and recent session events (completed long turns, goal/plan milestones,
-  tool failures with tool name and exit code, typing greetings).
-- **Right-click menu** — chat with the pet (LLM, see below), rename the pet,
-  toggle corner snapping, glide back to a corner, or hide it. The menu is
+- **Click recap** — clicking the **body** cycles a speech bubble through the
+  name/days entry and recent session events (completed long turns, goal/plan
+  milestones, tool failures with tool name and exit code, typing greetings).
+  Other hit zones do something else: **tail** a heart plus an immediate
+  patrol, **dorsal** an immediate patrol, **fin** a bubble.
+- **Right-click menu** — chat with the pet (LLM, see below), inspect or
+  delete remembered facts ("鲸鲸记得什么…"), rename the pet, toggle corner
+  snapping, glide back to a corner, or hide it. The menu is
   keyboard-accessible (Enter/Space) and closes on outside click or Escape.
 - **Corner snapping** — real drags (beyond the click threshold) glide to the
   nearest corner on release; toggle it from the menu.
@@ -35,8 +38,11 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
 ## LLM chat and memory
 
 The right-click **"和鲸鲸聊天…"** entry opens an inline input bubble next to
-the pet (Enter to send, Esc/outside click to close), and the pet replies in
-its speech bubble. The bubble carries a **model selector** and a **reasoning
+the pet (Enter to send, Esc/outside click to close; 200-character input, no
+transcript UI), and the pet replies in its speech bubble. Replies stream in
+when the host supports SSE (`Accept: text/event-stream`); the same bubble
+grows as tokens arrive instead of popping a new one per delta. The bubble
+carries a **model selector** and a **reasoning
 effort selector**: the model list comes from the DSH LLM service
 (`GET /api/whale-pet/models`), and models that expose multiple reasoning
 levels (e.g. deepseek-reasoner low/high) show an effort dropdown. Choices
@@ -64,9 +70,11 @@ Other configuration (direct mode only): `DSH_WHALE_API_BASE` (default
 
 Memory: the pet keeps long-term facts about you plus a bounded recent
 conversation under the `dsh.whale-pet.memory.v1` localStorage key (same guarded
-storage channel as the rest of the pet state). The system prompt asks the model
-to report memorable facts with a `[记住] <fact>` line; the chat coordinator
-strips those markers before showing the bubble and stores the extracted facts.
+storage channel as the rest of the pet state). The right-click **"鲸鲸记得什么…"**
+panel lists those facts and lets you delete one; the chat box itself stays
+history-free. The system prompt asks the model to report memorable facts with a
+`[记住] <fact>` line; the chat coordinator strips those markers before showing
+the bubble and stores the extracted facts.
 While a request is in flight the pet holds the `thinking` mood (an external
 override the session observer respects) and reacts with an error mood and sweat
 drops if the proxy is unreachable or unconfigured (no key → HTTP 503).
@@ -100,9 +108,11 @@ was discussed.
 
 When the user asks the pet for something that needs **real execution**
 (writing code, running commands, research, fixing bugs…), the pet does not
-fake an answer: it replies with a `[TASK] <description>` marker, the client
-calls `POST /api/whale-pet/task`, and the host dispatches a **real subagent
-conversation** through `ctx.subagents` (the same machinery as the agent's
+fake an answer: it replies with a `[TASK] <description>` marker. Only that
+marker dispatches work — a casual reply that merely contains execution verbs
+stays a direct answer. The client then calls `POST /api/whale-pet/task`, and
+the host dispatches a **real subagent conversation** through `ctx.subagents`
+(the same machinery as the agent's
 `subagent` tool: its own session, tools and results). The child appears in
 the DSH subagent view so the user can open it directly; when it finishes the
 pet summarizes the outcome in its bubble (on 1-min timeout it reports the child
@@ -129,6 +139,8 @@ reaction.
 | Session is blocked on you (`pendingInteraction`: approval / question / plan-review) | `awaiting`: same gaze and "？" as listening; click recaps "有个审批等你拍板" / "有个问题等你回答" / "有个计划等你过目". Wins over `working` because the turn often stays marked running. |
 | Hover or drag while sleeping | Wakes immediately and resets the idle clock |
 | No activity for 60s | `sleeping`: closed eyes, slow breathing, z-z-z |
+| First idle/sleep of a local calendar day | one unsolicited greeting ("今天也在～" / "又见面啦，第 N 天"); at most once a day |
+| A compaction node lands after the bind settle window | one "记忆被压扁了一点，我还在～" bubble; never an LLM daemon |
 
 Debug attributes on the pet element:
 

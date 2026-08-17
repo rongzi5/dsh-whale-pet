@@ -19,5 +19,7 @@ export declare class LlmBackend implements WhaleChatBackend {
     chat(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): Promise<{
         content: string;
     }>;
+    streamChat(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): AsyncIterable<string>;
+    private buildRequest;
     private buildCatalog;
 }

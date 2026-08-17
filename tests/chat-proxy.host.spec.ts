@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createChatProxyHandler, directBackend, forwardChat, resolveChatProxyConfig, UpstreamError } from '../src/chat-proxy.ts'
+import { createChatProxyHandler, directBackend, forwardChat, resolveChatProxyConfig, UpstreamError, writeChatSse } from '../src/chat-proxy.ts'
 import { createServer, type Server } from 'node:http'
 import { request } from 'node:http'
 
@@ -190,6 +190,40 @@ describe('createChatProxyHandler (direct backend, end-to-end)', () => {
       expect(unknown.status).toBe(404)
     } finally {
       proxy.close()
+    }
+  })
+
+  it('streams SSE deltas when Accept is text/event-stream', async () => {
+    const upstream = await startUpstream(() => ({
+      body: { choices: [{ message: { content: '你好呀！' } }] },
+    }))
+    const proxy = await serve(directBackend(() => ({
+      apiKey: 'k',
+      baseUrl: `http://127.0.0.1:${upstream.port}`,
+      model: 'm',
+    })))
+    try {
+      const result = await new Promise<{ status: number; text: string }>((resolve, reject) => {
+        const req = request({
+          host: '127.0.0.1',
+          port: proxy.port,
+          path: '/api/whale-pet/chat',
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+        }, res => {
+          const chunks: Buffer[] = []
+          res.on('data', chunk => chunks.push(chunk))
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString('utf8') }))
+        })
+        req.on('error', reject)
+        req.end(JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }))
+      })
+      expect(result.status).toBe(200)
+      expect(result.text).toContain('"delta":"你好呀！"')
+      expect(result.text).toContain('"done":true')
+    } finally {
+      proxy.close()
+      upstream.server.close()
     }
   })
 

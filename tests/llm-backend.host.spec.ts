@@ -103,6 +103,16 @@ describe('LlmBackend.chat', () => {
     expect(messages[0]?.content[0]).toEqual({ type: 'text', text: '你好' })
   })
 
+  it('yields visible text deltas from streamChat', async () => {
+    const llm = fakeLlm()
+    const backend = new LlmBackend(llm)
+    const deltas: string[] = []
+    for await (const delta of backend.streamChat([{ role: 'user', content: 'hi' }])) {
+      deltas.push(delta)
+    }
+    expect(deltas).toEqual(['你好', '呀！'])
+  })
+
   it('defaults provider/model from the catalog', async () => {
     const llm = fakeLlm()
     const backend = new LlmBackend(llm)
@@ -121,5 +131,30 @@ describe('LlmBackend.chat', () => {
     } as unknown as LlmRuntime
     const backend = new LlmBackend(llm)
     await expect(backend.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(/error/)
+  })
+})
+
+describe('readSseDeltas', () => {
+  it('yields deltas and surfaces stream errors', async () => {
+    const { readSseDeltas } = await import('../src/client/llm.ts')
+    const encode = (text: string): ReadableStream<Uint8Array> =>
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(text))
+          controller.close()
+        },
+      })
+
+    const deltas: string[] = []
+    for await (const delta of readSseDeltas(encode('data: {"delta":"你"}\n\ndata: {"delta":"好"}\n\ndata: {"done":true}\n\n'))) {
+      deltas.push(delta)
+    }
+    expect(deltas).toEqual(['你', '好'])
+
+    await expect(async () => {
+      for await (const _ of readSseDeltas(encode('data: {"error":"上游挂了"}\n\n'))) {
+        void _
+      }
+    }).rejects.toThrow('上游挂了')
   })
 })

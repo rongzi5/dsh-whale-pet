@@ -70,6 +70,12 @@ export interface WhaleChatBackend {
     chat(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): Promise<{
         content: string;
     }>;
+    /**
+     * Optional token stream. When present the HTTP handler can emit SSE
+     * (`text/event-stream`) instead of a single JSON body. Backends without a
+     * live upstream stream may yield the full reply as one delta.
+     */
+    streamChat?(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): AsyncIterable<string>;
 }
 /** Upstream returned a non-2xx status; carries the observed status. */
 export declare class UpstreamError extends Error {
@@ -117,5 +123,12 @@ export declare function readJsonBody(req: {
  * - GET  /api/whale-pet/health → { ok, configured }
  * - GET  /api/whale-pet/models  → the selectable model catalog
  * - POST /api/whale-pet/chat   → { content } (with optional provider/model/effort)
+ *   Accept: text/event-stream  → SSE `data: {"delta"}` then `data: {"done":true}`
  */
 export declare function createChatProxyHandler(backend: WhaleChatBackend): (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>;
+/** Write one SSE chat stream: delta events, then a terminal `{done:true}`. */
+export declare function writeChatSse(res: {
+    writeHead(status: number, headers: Record<string, string>): unknown;
+    write(chunk: string): unknown;
+    end(text?: string): unknown;
+}, deltas: AsyncIterable<string>): Promise<void>;

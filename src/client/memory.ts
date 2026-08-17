@@ -224,3 +224,12 @@ export function buildChatMessages(
   messages.push({ role: 'user', content: input })
   return messages
 }
+
+/** Remove one remembered fact (exact match after trim). Returns the next memory. */
+export function forgetFact(memory: WhaleMemory, fact: string): WhaleMemory {
+  const target = cleanText(fact, FACT_MAX_LENGTH)
+  if (target === null) return memory
+  const facts = memory.facts.filter(item => item !== target)
+  if (facts.length === memory.facts.length) return memory
+  return { facts, turns: memory.turns, ...(memory.summary !== undefined ? { summary: memory.summary } : {}) }
+}

@@ -178,6 +178,11 @@ export class WhalePetController {
     this.motion.celebrate()
   }
 
+  /** Start an edge patrol now (dorsal/tail click reaction); no-op while dragging. */
+  public patrolNow(): void {
+    this.motion.patrolNow()
+  }
+
   /** Latest rendered model yaw; used to anchor effects like bubbles. */
   public get currentYaw(): number {
     return this.lastYaw

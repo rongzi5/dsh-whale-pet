@@ -177,15 +177,16 @@ export class WhalePetChat {
       // Probe the fine-grained progress (host event log + jobs registry);
       // the coarse projection snapshot is the fallback.
       const progress = await this.probeProgress()
-      const reply = await this.transport.postChat(buildChatMessages(memory, meta, text, progress), options)
+      const messages = buildChatMessages(memory, meta, text, progress)
+      const reply = await this.collectReply(messages, options)
       // The pet may decide the request needs real execution: it replies with
       // a [TASK] marker, which dispatches a subagent conversation instead of
-      // answering directly. A client-side intent fallback catches execution
-      // requests the pet answered directly anyway (e.g. "写个冒泡排序").
+      // answering directly. Only the marker triggers dispatch — a client-side
+      // keyword fallback is deliberately NOT applied here, so casual chat that
+      // merely contains execution verbs ("写个…") stays a direct answer.
       const task = extractTaskRequest(reply)
-      const intent = taskIntent(text)
-      if (this.transport.runTask !== undefined && (task !== null || intent !== null)) {
-        await this.dispatchTask(memory, text, task ?? { prompt: intent! }, progress?.sessionId, options)
+      if (this.transport.runTask !== undefined && task !== null) {
+        await this.dispatchTask(memory, text, task, progress?.sessionId, options)
         return
       }
       const cleanReply = stripMemoryMarkers(reply)
@@ -201,6 +202,24 @@ export class WhalePetChat {
       this.busy = false
       this.service.clearExternalMood()
     }
+  }
+
+  /**
+   * Prefer the token stream when the transport exposes one so the bubble can
+   * grow as deltas arrive. Falls back to the one-shot POST for older fakes.
+   */
+  private async collectReply(messages: ReturnType<typeof buildChatMessages>, options?: WhaleChatOptions): Promise<string> {
+    if (this.transport.streamChat === undefined) {
+      return this.transport.postChat(messages, options)
+    }
+    let acc = ''
+    for await (const delta of this.transport.streamChat(messages, options)) {
+      acc += delta
+      const visible = stripMemoryMarkers(acc)
+      if (visible !== '') this.service.showBubble(visible, REPLY_BUBBLE_MS, { replace: true })
+    }
+    if (acc.trim() === '') throw new Error('空回复')
+    return acc
   }
 
   /** Dispatch a [TASK] to a subagent conversation and report the outcome. */
@@ -243,9 +262,11 @@ export interface WhaleTaskRequest {
 }
 
 /**
- * Client-side intent fallback: strong execution verbs in the user's request
- * ("写个…/实现…/修复…/跑一下…") dispatch a subagent task even when the pet
- * answered directly. Returns the user text as the task prompt, or null.
+ * Client-side execution-intent detection: strong execution verbs in the user's
+ * request ("写个…/实现…/修复…/跑一下…"). Kept as a pure helper — `ask()` no
+ * longer dispatches on it (only the `[TASK]` marker does), but tests and a
+ * future opt-in setting may still use it. Returns the user text as the task
+ * prompt, or null.
  */
 const TASK_INTENT_PATTERN = /(写个|写一个|写一段|帮我写|帮我做|帮我实现|实现|编写|创建|开发|修复|重构|部署|跑一下|运行|执行|查一下|查资料|研究|调研|测试一下|调试|debug|fix|implement|create|write)/i
 

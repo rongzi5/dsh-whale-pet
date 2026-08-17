@@ -518,4 +518,33 @@ describe('SessionWhaleObserver', () => {
     observer.dispose()
     service.dispose()
   })
+
+  it('mentions compaction once after the bind settle window', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+    vi.advanceTimersByTime(3_000)
+
+    conversation.set({
+      running: false,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'compaction', seq: 8 }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().recap?.text).toContain('记忆被压扁')
+
+    conversation.set({
+      running: false,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'compaction', seq: 8 }, { kind: 'assistant', seq: 9 }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().recap?.text).toContain('记忆被压扁')
+
+    observer.dispose()
+    service.dispose()
+  })
 })

@@ -62,6 +62,11 @@ export declare class WhalePetChat {
     listModels(): Promise<WhaleModelCatalog>;
     /** Run one chat turn; safe to call while busy (bubbles a gentle nudge). */
     ask(input: string, options?: WhaleChatOptions): Promise<void>;
+    /**
+     * Prefer the token stream when the transport exposes one so the bubble can
+     * grow as deltas arrive. Falls back to the one-shot POST for older fakes.
+     */
+    private collectReply;
     /** Dispatch a [TASK] to a subagent conversation and report the outcome. */
     private dispatchTask;
     private meta;

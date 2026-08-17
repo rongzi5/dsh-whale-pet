@@ -73,6 +73,12 @@ export interface WhaleChatBackend {
   available(): boolean | Promise<boolean>
   listModels(): Promise<WhaleModelCatalog>
   chat(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): Promise<{ content: string }>
+  /**
+   * Optional token stream. When present the HTTP handler can emit SSE
+   * (`text/event-stream`) instead of a single JSON body. Backends without a
+   * live upstream stream may yield the full reply as one delta.
+   */
+  streamChat?(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): AsyncIterable<string>
 }
 
 /** Upstream returned a non-2xx status; carries the observed status. */
@@ -198,6 +204,10 @@ export function directBackend(
       // The direct mode has a single model; effort is not mapped upstream.
       return forwardChat(config, messages, options?.model ?? config.model)
     },
+    async *streamChat(messages, options): AsyncIterable<string> {
+      const { content } = await this.chat(messages, options)
+      if (content !== '') yield content
+    },
   }
 }
 
@@ -240,6 +250,7 @@ function sendJson(res: { writeHead(status: number, headers: Record<string, strin
  * - GET  /api/whale-pet/health → { ok, configured }
  * - GET  /api/whale-pet/models  → the selectable model catalog
  * - POST /api/whale-pet/chat   → { content } (with optional provider/model/effort)
+ *   Accept: text/event-stream  → SSE `data: {"delta"}` then `data: {"done":true}`
  */
 export function createChatProxyHandler(
   backend: WhaleChatBackend,
@@ -297,7 +308,13 @@ export function createChatProxyHandler(
       ...(typeof record.model === 'string' ? { model: record.model } : {}),
       ...(typeof record.effort === 'string' ? { effort: record.effort } : {}),
     }
+    const accept = String(req.headers.accept ?? '')
+    const wantsStream = accept.includes('text/event-stream') && backend.streamChat !== undefined
     try {
+      if (wantsStream) {
+        await writeChatSse(res, backend.streamChat!(record.messages, options))
+        return
+      }
       const { content } = await backend.chat(record.messages, options)
       sendJson(res, 200, { ok: true, content })
     } catch (error) {
@@ -309,5 +326,29 @@ export function createChatProxyHandler(
       const message = error instanceof Error ? error.message : String(error)
       sendJson(res, status, { ok: false, status, error: message.slice(0, 300) })
     }
+  }
+}
+
+/** Write one SSE chat stream: delta events, then a terminal `{done:true}`. */
+export async function writeChatSse(
+  res: { writeHead(status: number, headers: Record<string, string>): unknown; write(chunk: string): unknown; end(text?: string): unknown },
+  deltas: AsyncIterable<string>,
+): Promise<void> {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+  })
+  try {
+    for await (const delta of deltas) {
+      if (delta === '') continue
+      res.write(`data: ${JSON.stringify({ delta })}\n\n`)
+    }
+    res.write('data: {"done":true}\n\n')
+    res.end()
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 300) : String(error)
+    res.write(`data: ${JSON.stringify({ error: message })}\n\n`)
+    res.end()
   }
 }

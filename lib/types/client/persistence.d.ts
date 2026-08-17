@@ -18,6 +18,8 @@ export interface WhalePetPersistedState {
     y: number | null;
     /** ISO timestamp of the first run; drives the "days together" recap. */
     since: string;
+    /** Local calendar day (`YYYY-MM-DD`) of the last unsolicited greeting. */
+    lastGreetDay: string;
 }
 export interface StorageLike {
     getItem(key: string): string | null;
@@ -30,5 +32,7 @@ export declare function loadWhalePetState(storage: StorageLike | null): WhalePet
 export declare function saveWhalePetState(storage: StorageLike | null, patch: Partial<WhalePetPersistedState>): void;
 /** The browser's localStorage when available; null otherwise. */
 export declare function browserStorage(): StorageLike | null;
+/** Local calendar day key used to rate-limit unsolicited greetings. */
+export declare function localDayKey(now?: number): string;
 /** Whole days since the first run (0 on the first day, 0 for unknown dates). */
 export declare function daysSince(since: string, now?: number): number;

@@ -36,6 +36,27 @@ export class LlmBackend implements WhaleChatBackend {
   }
 
   public async chat(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): Promise<{ content: string }> {
+    const text: string[] = []
+    for await (const delta of this.streamChat(messages, options)) text.push(delta)
+    const content = text.join('').trim()
+    if (content === '') throw new Error('llm returned an empty completion')
+    return { content }
+  }
+
+  public async *streamChat(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): AsyncIterable<string> {
+    const request = await this.buildRequest(messages, options)
+    for await (const chunk of this.llm.stream(request)) {
+      if (chunk.type === 'text-delta') {
+        if (chunk.text !== '') yield chunk.text
+      } else if (chunk.type === 'finish') {
+        if (chunk.reason.kind === 'error' || chunk.reason.kind === 'aborted') {
+          throw new Error(`llm stream finished with ${chunk.reason.kind}`)
+        }
+      }
+    }
+  }
+
+  private async buildRequest(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): Promise<GenerateOptions> {
     const catalog = await this.listModels()
     const provider = options?.provider ?? catalog.default.provider
     const model = options?.model ?? catalog.default.model
@@ -50,27 +71,13 @@ export class LlmBackend implements WhaleChatBackend {
       return createUserMessage({ content, source: { kind: 'user' as const } })
     })
 
-    const request: GenerateOptions = {
+    return {
       provider,
       model,
       messages: llmMessages,
       ...(system !== undefined ? { system } : {}),
       ...(options?.effort !== undefined ? { reasoningEffort: ReasoningEffortId(options.effort) } : {}),
     }
-
-    const text: string[] = []
-    for await (const chunk of this.llm.stream(request)) {
-      if (chunk.type === 'text-delta') {
-        text.push(chunk.text)
-      } else if (chunk.type === 'finish') {
-        if (chunk.reason.kind === 'error' || chunk.reason.kind === 'aborted') {
-          throw new Error(`llm stream finished with ${chunk.reason.kind}`)
-        }
-      }
-    }
-    const content = text.join('').trim()
-    if (content === '') throw new Error('llm returned an empty completion')
-    return { content }
   }
 
   private async buildCatalog(): Promise<WhaleModelCatalog> {

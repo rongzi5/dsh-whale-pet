@@ -231,6 +231,8 @@ export class SessionWhaleObserver {
   private lastNodeCount = -1
   private userTyping = false
   private lastPending: WhalePendingInteraction | undefined
+  private lastCompactionSeq = -1
+  private lastNudgeAt = 0
   private disposed = false
 
   public constructor(
@@ -374,6 +376,7 @@ export class SessionWhaleObserver {
       this.knownGoalPhase = undefined
       this.knownPlanActive = undefined
       this.lastPending = undefined
+      this.lastCompactionSeq = -1
       this.transient = null
       this.boundAt = 0
       if (current === undefined) {
@@ -523,6 +526,7 @@ export class SessionWhaleObserver {
       this.service.playEffect('bubble')
     }
 
+    this.maybeNudge(now, snapshot.nodes, mood.mood)
     this.applyActivity(mood)
   }
 
@@ -546,6 +550,37 @@ export class SessionWhaleObserver {
     this.service.setActivity({ mood: 'celebrating', intensity: 1 })
     this.service.celebrate()
   }
+
+  /**
+   * Extremely sparse unsolicited talk: one greeting per local day, plus a
+   * compaction notice. Never calls the LLM. Rate-limited so two events in
+   * the same minute cannot stack bubbles.
+   */
+  private maybeNudge(now: number, nodes: readonly ConversationNodeLike[], mood: WhaleActivity['mood']): void {
+    if (this.service.externalMood() !== null) return
+    const compaction = latestCompaction(nodes)
+    if (compaction !== null && compaction.seq > this.lastCompactionSeq) {
+      this.lastCompactionSeq = compaction.seq
+      if (compaction.seq > 0 && now - this.boundAt >= ERROR_SETTLE_MS) {
+        this.service.showBubble('记忆被压扁了一点，我还在～', 4_500)
+        this.lastNudgeAt = now
+        return
+      }
+    }
+    if (now - this.lastNudgeAt < 60_000) return
+    if (mood !== 'idle' && mood !== 'sleeping') return
+    if (this.service.greetOnceToday(now)) this.lastNudgeAt = now
+  }
+}
+
+function latestCompaction(nodes: readonly ConversationNodeLike[]): { seq: number } | null {
+  let seq = -1
+  for (const node of nodes) {
+    if (node.kind !== 'compaction') continue
+    const next = node.seq ?? 0
+    if (next >= seq) seq = next
+  }
+  return seq < 0 ? null : { seq }
 }
 
 function readPendingInteraction(

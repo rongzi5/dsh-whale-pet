@@ -73,6 +73,8 @@ export declare class WhalePetController {
     setHidden(hidden: boolean): void;
     /** Run the motion layer's longer celebration lap. */
     celebrate(): void;
+    /** Start an edge patrol now (dorsal/tail click reaction); no-op while dragging. */
+    patrolNow(): void;
     /** Latest rendered model yaw; used to anchor effects like bubbles. */
     get currentYaw(): number;
     private readonly resize;

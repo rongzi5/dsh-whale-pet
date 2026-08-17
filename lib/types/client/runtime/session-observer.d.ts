@@ -93,6 +93,8 @@ export declare class SessionWhaleObserver {
     private lastNodeCount;
     private userTyping;
     private lastPending;
+    private lastCompactionSeq;
+    private lastNudgeAt;
     private disposed;
     constructor(ctx: WhaleSessionClientContext, service: WhalePetService);
     /**
@@ -123,6 +125,12 @@ export declare class SessionWhaleObserver {
     private applyActivity;
     private seedProjections;
     private celebrate;
+    /**
+     * Extremely sparse unsolicited talk: one greeting per local day, plus a
+     * compaction notice. Never calls the LLM. Rate-limited so two events in
+     * the same minute cannot stack bubbles.
+     */
+    private maybeNudge;
 }
 export declare const SESSION_BRIDGE_THRESHOLDS: Readonly<{
     POLL_MS: 200;

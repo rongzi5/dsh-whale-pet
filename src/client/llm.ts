@@ -53,6 +53,11 @@ export interface WhaleModelCatalog {
 /** The chat surface the coordinator depends on. */
 export interface WhaleChatTransport {
   postChat(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): Promise<string>
+  /**
+   * Optional token stream. When present the coordinator updates the bubble
+   * incrementally; absent transports keep the one-shot `postChat` path.
+   */
+  streamChat?(messages: readonly WhaleChatMessage[], options?: WhaleChatOptions): AsyncIterable<string>
   listModels(): Promise<WhaleModelCatalog>
   /**
    * Optional fine-grained session progress from the host event log. Absent
@@ -105,6 +110,41 @@ async function proxyJson<T>(path: string, init: RequestInit, timeoutMs = CHAT_TI
   }
 }
 
+/** Parse `text/event-stream` chat deltas from the host proxy. */
+export async function* readSseDeltas(body: ReadableStream<Uint8Array>): AsyncIterable<string> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+      const events = buffer.split('\n\n')
+      buffer = done ? '' : (events.pop() ?? '')
+      for (const event of events) {
+        const data = event.split('\n')
+          .filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trim())
+          .join('\n')
+        if (data === '') continue
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(data)
+        } catch {
+          continue
+        }
+        if (typeof parsed !== 'object' || parsed === null) continue
+        const record = parsed as { delta?: unknown; done?: unknown; error?: unknown }
+        if (typeof record.error === 'string' && record.error !== '') throw new Error(record.error)
+        if (typeof record.delta === 'string' && record.delta !== '') yield record.delta
+      }
+      if (done) break
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 /** Default transport: same-origin fetch to the host-side chat proxy. */
 export const localChatTransport: WhaleChatTransport = {
   async postChat(messages, options): Promise<string> {
@@ -117,6 +157,31 @@ export const localChatTransport: WhaleChatTransport = {
       throw new Error('空回复')
     }
     return payload.content
+  },
+
+  async *streamChat(messages, options): AsyncIterable<string> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS)
+    try {
+      const res = await fetch(CHAT_PROXY_PATH, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+        },
+        body: JSON.stringify({ messages, ...options }),
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { error?: unknown } | null
+        const detail = typeof payload?.error === 'string' ? payload.error : `HTTP ${res.status}`
+        throw new Error(detail)
+      }
+      if (res.body === null) throw new Error('空回复')
+      yield* readSseDeltas(res.body)
+    } finally {
+      clearTimeout(timer)
+    }
   },
 
   async listModels(): Promise<WhaleModelCatalog> {

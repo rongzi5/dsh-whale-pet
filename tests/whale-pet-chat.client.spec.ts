@@ -78,6 +78,16 @@ describe('WhalePetChat', () => {
     service.dispose()
   })
 
+  it('stores a first-person fact even when the model forgets the [记住] marker', async () => {
+    const service = new WhalePetService(new FakeStorage())
+    const storage = new FakeStorage()
+    const transport = fakeTransport('好呀，我记住了～')
+    const chat = new WhalePetChat(service, storage, transport)
+    await chat.ask('我叫小明，我喜欢蓝色')
+    expect(loadWhaleMemory(storage).facts).toEqual(['用户叫小明', '用户喜欢蓝色'])
+    service.dispose()
+  })
+
   it('grows the reply bubble as stream deltas arrive', async () => {
     const service = new WhalePetService(new FakeStorage())
     const storage = new FakeStorage()

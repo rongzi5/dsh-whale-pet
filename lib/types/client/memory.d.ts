@@ -69,6 +69,12 @@ export declare function buildSystemPrompt(memory: WhaleMemory, meta: {
 }, progress?: WhaleSessionProgress | null, progressQuery?: boolean): string;
 /** Extract `[记住] <fact>` lines from a model reply. */
 export declare function extractFacts(reply: string): string[];
+/**
+ * Pull first-person facts out of the user's own message so memory does not
+ * depend on the model emitting `[记住]`. Models under the 60-char persona
+ * often say "记住了" without the marker.
+ */
+export declare function extractUserFacts(input: string): string[];
 /** Strip `[记住] ...` marker lines so they never show in the bubble. */
 export declare function stripMemoryMarkers(reply: string): string;
 /** Assemble the full request: system persona + recent turns + the new input. */

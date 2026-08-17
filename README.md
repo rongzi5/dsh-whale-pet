@@ -71,10 +71,11 @@ Other configuration (direct mode only): `DSH_WHALE_API_BASE` (default
 Memory: the pet keeps long-term facts about you plus a bounded recent
 conversation under the `dsh.whale-pet.memory.v1` localStorage key (same guarded
 storage channel as the rest of the pet state). The right-click **"鲸鲸记得什么…"**
-panel lists those facts and lets you delete one; the chat box itself stays
-history-free. The system prompt asks the model to report memorable facts with a
-`[记住] <fact>` line; the chat coordinator strips those markers before showing
-the bubble and stores the extracted facts.
+panel lists those facts, lets you delete one, or type a new one. The chat box
+itself stays history-free. Facts arrive three ways: the model may still emit a
+`[记住] <fact>` line, the coordinator also extracts first-person statements
+from the user ("我叫… / 我喜欢… / 记住：…"), and the panel can add a fact
+directly. Marker lines are stripped before the bubble is shown.
 While a request is in flight the pet holds the `thinking` mood (an external
 override the session observer respects) and reacts with an error mood and sweat
 drops if the proxy is unreachable or unconfigured (no key → HTTP 503).

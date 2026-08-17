@@ -3,7 +3,7 @@ import type { WhaleEffect } from './activity.ts'
 import { WhalePetService, type WhaleHitZone } from './runtime/whale-pet-service.ts'
 import type { WhalePetChat } from './runtime/whale-pet-chat.ts'
 import type { WhaleChatOptions, WhaleModelCatalog } from './llm.ts'
-import { forgetFact, loadWhaleMemory, saveWhaleMemory } from './memory.ts'
+import { forgetFact, loadWhaleMemory, rememberFacts, saveWhaleMemory } from './memory.ts'
 import { browserStorage } from './persistence.ts'
 import styles from './WhalePet.module.css'
 
@@ -53,6 +53,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const [chatText, setChatText] = useState('')
   const [memoryBox, setMemoryBox] = useState<WhaleMenuState | null>(null)
   const [memoryFacts, setMemoryFacts] = useState<string[]>([])
+  const [memoryDraft, setMemoryDraft] = useState('')
   const [catalog, setCatalog] = useState<WhaleModelCatalog | null>(null)
   const [catalogError, setCatalogError] = useState('')
   const [modelKey, setModelKey] = useState('')
@@ -294,6 +295,17 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     setChatBox(null)
     setMemoryBox({ x: menu.x, y: menu.y })
     setMemoryFacts(loadWhaleMemory(browserStorage()).facts)
+    setMemoryDraft('')
+  }
+
+  const remember = (): void => {
+    const fact = memoryDraft.trim()
+    if (fact === '') return
+    const storage = browserStorage()
+    const next = rememberFacts(loadWhaleMemory(storage), [fact])
+    saveWhaleMemory(storage, next)
+    setMemoryFacts(next.facts)
+    setMemoryDraft('')
   }
 
   const forget = (fact: string): void => {
@@ -510,7 +522,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
         >
           <div className={styles.memoryTitle}>鲸鲸记得什么</div>
           {memoryFacts.length === 0 ? (
-            <div className={styles.memoryEmpty}>还没有关于你的记忆</div>
+            <div className={styles.memoryEmpty}>还没有关于你的记忆。说「我叫… / 我喜欢…」或在下面写一条。</div>
           ) : (
             <ul className={styles.memoryList}>
               {memoryFacts.map(fact => (
@@ -528,6 +540,26 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
               ))}
             </ul>
           )}
+          <div className={styles.memoryAddRow}>
+            <input
+              className={styles.memoryInput}
+              value={memoryDraft}
+              maxLength={80}
+              placeholder="记一条…"
+              onChange={event => setMemoryDraft(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') remember()
+              }}
+            />
+            <button
+              type="button"
+              className={styles.memoryAdd}
+              disabled={memoryDraft.trim() === ''}
+              onClick={remember}
+            >
+              记住
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

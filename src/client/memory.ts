@@ -181,7 +181,7 @@ export function buildSystemPrompt(
   const base = [
     ...persona,
     `关于用户的记忆：\n${memory.facts.length > 0 ? memory.facts.map(fact => `- ${fact}`).join('\n') : '（还没有关于用户的记忆）'}`,
-    '如果用户告诉了你值得长期记住的事实（名字、喜好、习惯、安排等），在你的回复末尾单独一行输出「[记住] 事实内容」。',
+    '用户说了名字、喜好、习惯或明确让你记住的事时，回复末尾必须单独一行输出「[记住] 事实内容」，即使这会略微超过 60 字。没有新事实就不要写这一行。',
     '如果用户请求的是写代码、实现功能、运行命令、查资料、做研究、修 bug 等需要实际执行的任务——无论你觉得多简单——都不要直接给代码或方案，而是在回复开头单独一行输出「[TASK] <任务描述>」，描述要完整清晰（可附带你已知的上下文）；只有闲聊、问答、桌宠相关话题才直接回答。',
   ]
   const blocks = [...base]
@@ -200,6 +200,41 @@ export function extractFacts(reply: string): string[] {
   while ((match = pattern.exec(reply)) !== null) {
     const fact = match[1]?.trim()
     if (fact !== undefined && fact !== '') facts.push(fact)
+  }
+  return facts
+}
+
+/**
+ * Pull first-person facts out of the user's own message so memory does not
+ * depend on the model emitting `[记住]`. Models under the 60-char persona
+ * often say "记住了" without the marker.
+ */
+export function extractUserFacts(input: string): string[] {
+  const text = input.trim()
+  if (text === '') return []
+  const facts: string[] = []
+  const push = (fact: string | undefined): void => {
+    const cleaned = cleanText(fact, FACT_MAX_LENGTH)
+    if (cleaned !== null && !facts.includes(cleaned)) facts.push(cleaned)
+  }
+
+  const name = /(?:我叫|我的名字是|叫我)\s*([^\s，,。！!？?]{1,16})/.exec(text)
+  if (name?.[1] !== undefined) push(`用户叫${name[1]}`)
+
+  const like = /我(?:喜欢|爱|最爱|超爱)\s*([^，,。！!？?\n]{1,24})/.exec(text)
+  if (like?.[1] !== undefined) push(`用户喜欢${like[1].trim()}`)
+
+  const dislike = /我(?:不喜欢|讨厌|最讨厌)\s*([^，,。！!？?\n]{1,24})/.exec(text)
+  if (dislike?.[1] !== undefined) push(`用户不喜欢${dislike[1].trim()}`)
+
+  const habit = /我(?:每天|总是|经常|习惯)\s*([^，,。！!？?\n]{1,24})/.exec(text)
+  if (habit?.[1] !== undefined) push(`用户${habit[0].trim()}`)
+
+  if (/记住|记得|别忘|记一下/.test(text) && facts.length === 0) {
+    const leftover = text
+      .replace(/^(?:请)?(?:帮我)?(?:记住|记得|别忘了?|记一下)[：:，,\s]*/u, '')
+      .trim()
+    if (leftover !== '' && leftover !== text) push(leftover)
   }
   return facts
 }

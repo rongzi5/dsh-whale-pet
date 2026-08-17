@@ -441,6 +441,44 @@
   text-align: center;
 }
 
+.memoryAddRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.memoryInput {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgb(77 107 254 / 22%);
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: rgb(255 255 255 / 92%);
+  color: #23315e;
+  font: 500 12px/1.4 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.memoryInput:focus-visible {
+  outline: 2px solid rgb(77 107 254 / 35%);
+  outline-offset: 0;
+}
+
+.memoryAdd {
+  flex-shrink: 0;
+  border: 1px solid rgb(77 107 254 / 28%);
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: rgb(77 107 254 / 10%);
+  color: #4d6bfe;
+  font: 600 11px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+
+.memoryAdd:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 @keyframes heart-rise {
   0% {
     opacity: 0;

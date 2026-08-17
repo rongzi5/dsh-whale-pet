@@ -4,6 +4,7 @@ import {
   buildChatMessages,
   buildSystemPrompt,
   extractFacts,
+  extractUserFacts,
   forgetFact,
   loadWhaleMemory,
   rememberFacts,
@@ -77,6 +78,22 @@ describe('extractFacts / stripMemoryMarkers', () => {
   it('returns no facts without markers', () => {
     expect(extractFacts('今天天气不错')).toEqual([])
     expect(stripMemoryMarkers('今天天气不错')).toBe('今天天气不错')
+  })
+})
+
+describe('extractUserFacts', () => {
+  it('pulls name, likes and dislikes from the user message', () => {
+    expect(extractUserFacts('我叫小明，我喜欢蓝色')).toEqual(['用户叫小明', '用户喜欢蓝色'])
+    expect(extractUserFacts('我讨厌周一')).toEqual(['用户不喜欢周一'])
+  })
+
+  it('treats an explicit remember request as a fact', () => {
+    expect(extractUserFacts('记住：周末要交报告')).toEqual(['周末要交报告'])
+  })
+
+  it('ignores small talk', () => {
+    expect(extractUserFacts('今天天气不错')).toEqual([])
+    expect(extractUserFacts('在吗')).toEqual([])
   })
 })
 

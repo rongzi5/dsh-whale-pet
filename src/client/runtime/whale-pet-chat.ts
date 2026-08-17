@@ -17,6 +17,7 @@ import {
   appendTurn,
   buildChatMessages,
   extractFacts,
+  extractUserFacts,
   loadWhaleMemory,
   rememberFacts,
   saveWhaleMemory,
@@ -190,7 +191,7 @@ export class WhalePetChat {
         return
       }
       const cleanReply = stripMemoryMarkers(reply)
-      const next = rememberFacts(memory, extractFacts(reply))
+      const next = rememberFacts(memory, [...extractFacts(reply), ...extractUserFacts(text)])
       const persisted = appendTurn(appendTurn(next, 'user', text), 'assistant', cleanReply)
       saveWhaleMemory(this.storage, persisted)
       this.service.showBubble(cleanReply, REPLY_BUBBLE_MS)

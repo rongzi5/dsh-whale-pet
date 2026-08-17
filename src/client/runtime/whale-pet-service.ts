@@ -216,12 +216,25 @@ export class WhalePetService {
   }
 
   /** Record one session/interaction event for the click recap (dedupes repeats). */
-  public pushRecap(text: string): void {
-    if (this.disposed || text === '') return
+  public pushRecap(text: string): number | null {
+    if (this.disposed || text === '') return null
     const last = this.recapHistory[this.recapHistory.length - 1]
-    if (last !== undefined && last.text === text) return
-    this.recapHistory = [...this.recapHistory, { id: this.nextRecapId, text }].slice(-RECAP_HISTORY_LIMIT)
+    if (last !== undefined && last.text === text) return last.id
+    const id = this.nextRecapId
+    this.recapHistory = [...this.recapHistory, { id, text }].slice(-RECAP_HISTORY_LIMIT)
     this.nextRecapId += 1
+    return id
+  }
+
+  /** Remove stale recap entries that were superseded by a later successful turn. */
+  public discardRecaps(ids: ReadonlySet<number>): void {
+    if (this.disposed || ids.size === 0) return
+    const history = this.recapHistory.filter(entry => !ids.has(entry.id))
+    const current = this.recapCurrent
+    if (history.length === this.recapHistory.length && (current === null || !ids.has(current.id))) return
+    this.recapHistory = history
+    if (current !== null && ids.has(current.id)) this.recapCurrent = null
+    this.publish()
   }
 
   /**

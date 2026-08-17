@@ -412,6 +412,41 @@ describe('SessionWhaleObserver', () => {
     service.dispose()
   })
 
+  it('drops an intermediate tool failure recap when the turn later completes', () => {
+    const { conversation, observer, service } = setup()
+    observer.start()
+    vi.advanceTimersByTime(3_000)
+
+    conversation.set({
+      running: true,
+      partial: null,
+      runningCalls: [],
+      nodes: [{ kind: 'tool-result', seq: 4, isError: false, call: { name: 'read' }, resultView: { exitCode: 1 } }],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+    service.nextRecap()
+    expect(service.getSnapshot().recap?.text).toBe('read 失败（exit 1）')
+
+    conversation.set({
+      running: false,
+      partial: null,
+      runningCalls: [],
+      nodes: [
+        { kind: 'tool-result', seq: 4, isError: false, call: { name: 'read' }, resultView: { exitCode: 1 } },
+        { kind: 'assistant', seq: 5 },
+      ],
+      lastAgentError: null,
+    })
+    vi.advanceTimersByTime(200)
+
+    service.nextRecap()
+    expect(service.getSnapshot().recap?.text).not.toContain('read 失败')
+
+    observer.dispose()
+    service.dispose()
+  })
+
   it('lets an external mood override win over session-derived states', () => {
     const { conversation, observer, service } = setup()
     observer.start()

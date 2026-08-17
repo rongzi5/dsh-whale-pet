@@ -222,6 +222,8 @@ export class SessionWhaleObserver {
   private turnStartedAt = 0
   private lastActivityAt = Date.now()
   private lastErrorSeq = -1
+  /** Failure recaps emitted by the currently running turn. */
+  private turnErrorRecapIds = new Set<number>()
   private knownGoalPhase: string | undefined
   private knownPlanActive: boolean | undefined
   private transient: TransientMood | null = null
@@ -372,6 +374,7 @@ export class SessionWhaleObserver {
       this.turnStartedAt = 0
       this.lastActivityAt = Date.now()
       this.lastErrorSeq = -1
+      this.turnErrorRecapIds.clear()
       this.lastNodeCount = -1
       this.knownGoalPhase = undefined
       this.knownPlanActive = undefined
@@ -427,6 +430,10 @@ export class SessionWhaleObserver {
     const hasCalls = snapshot.runningCalls.length > 0
     const active = snapshot.running || hasPartial || hasCalls
     if (active) this.lastActivityAt = now
+    if (snapshot.running && !this.wasRunning) {
+      this.turnErrorRecapIds.clear()
+      this.turnStartedAt = now
+    }
 
     // Tool/turn failures: react once per new failure node. History windows
     // load asynchronously after binding, so late-arriving OLD nodes (time
@@ -450,13 +457,17 @@ export class SessionWhaleObserver {
       if (fresh) {
         this.transient = { mood: 'error', until: now + ERROR_MS }
         this.service.playErrorReaction(now + ERROR_MS)
-        this.service.pushRecap(errorRecapText(mark))
+        const recapId = this.service.pushRecap(errorRecapText(mark))
+        if (recapId !== null) this.turnErrorRecapIds.add(recapId)
       }
     }
 
-    // Turn boundaries: celebrate long completed turns, goals, and plans.
-    if (snapshot.running && !this.wasRunning) {
-      this.turnStartedAt = now
+    // Turn boundaries: intermediate tool failures are useful while work is in
+    // flight, but a later successful completion supersedes those recaps.
+    if (this.wasRunning && !snapshot.running) {
+      const terminalError = mark?.kind === 'turn-error' || snapshot.lastAgentError != null
+      if (!terminalError) this.service.discardRecaps(this.turnErrorRecapIds)
+      this.turnErrorRecapIds.clear()
     }
     if (shouldCelebrateCompletedTurn(this.wasRunning, snapshot.running, this.turnStartedAt, now, this.transient)) {
       this.celebrate(now)

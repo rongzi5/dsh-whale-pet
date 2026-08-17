@@ -29,6 +29,12 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
   keyboard-accessible (Enter/Space) and closes on outside click or Escape.
 - **Corner snapping** — real drags (beyond the click threshold) glide to the
   nearest corner on release; toggle it from the menu.
+- **Drag dizziness** — a forceful drag (at least 420px of pointer travel at an
+  average 550px/s) or a prolonged drag (at least 4.5s with 24px of travel)
+  leaves the whale dizzy for about 4s. It rolls belly-up, weakly wobbles, and
+  shows three stars orbiting an ellipse around its belly with front/back depth.
+  Hover, click, context-menu, and further drag reactions stay locked until it
+  recovers; holds without movement and cancelled gestures do not trigger it.
 - **`Ctrl`/`Cmd` + `Alt` + `W`** — toggle the pet's visibility from anywhere;
   the shortcut works even when the pet is hidden.
 - **Persistence** — the pet's name, position, hidden state and snap preference
@@ -139,6 +145,7 @@ reaction.
 | Long turn (≥15s), goal completion, or plan exit | `celebrating`: a 360° elliptical lap with continuous yaw and screen-space depth, while hearts stream every 650ms |
 | You are composing a reply in the chat input | `listening`: gazes at the input area, shows a floating "？", and recaps "在呢，我听着～" on click |
 | Session is blocked on you (`pendingInteraction`: approval / question / plan-review) | `awaiting`: same gaze and "？" as listening; click recaps "有个审批等你拍板" / "有个问题等你回答" / "有个计划等你过目". Wins over `working` because the turn often stays marked running. |
+| Forceful or prolonged drag release | `dizzy`: freezes pointer interaction, rolls belly-up, weakly wobbles, and shows a depth-aware elliptical star orbit for about 4s |
 | Hover or drag while sleeping | Wakes immediately and resets the idle clock |
 | No activity for 60s | `sleeping`: closed eyes, slow breathing, z-z-z |
 | First idle/sleep of a local calendar day | one unsolicited greeting ("今天也在～" / "又见面啦，第 N 天"); at most once a day |
@@ -146,7 +153,7 @@ reaction.
 
 Debug attributes on the pet element:
 
-- `data-whale-activity` — current mood (`idle`, `thinking`, `working`, `focused`, `celebrating`, `error`, `sleeping`, `listening`, `awaiting`)
+- `data-whale-activity` — current mood (`idle`, `thinking`, `working`, `focused`, `celebrating`, `error`, `dizzy`, `sleeping`, `listening`, `awaiting`)
 - `data-whale-bridge` — session bridge state (`off`, `waiting`, `bound`)
 
 ## Installation
@@ -180,7 +187,7 @@ The repository builds standalone (no pnpm workspace, no dsh checkout):
 ```sh
 npm install            # dev toolchain: typescript, esbuild, vitest, three…
 npm run build          # tsc declarations + esbuild host/client bundles → lib/
-npm test               # vitest suite (138 tests)
+npm test               # vitest suite (175 tests)
 node install-profile.mjs web
 ```
 

@@ -6,11 +6,19 @@
  * {@link playEffect} and {@link pushRecap}.
  */
 import { type WhaleActivity, type WhaleBridgeState, type WhaleEffectKind, type WhaleMood, type WhalePetViewSnapshot } from '../activity.ts';
+import type { WhaleDragResult } from '../motion.ts';
 import { type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts';
 import type { SessionWhaleObserver } from './session-observer.ts';
 import { type StorageLike } from '../persistence.ts';
 /** Clickable pet regions routed by the view to zone-specific reactions. */
 export type WhaleHitZone = 'body' | 'tail' | 'dorsal' | 'fin';
+export declare const DIZZY_DURATION_MS = 4000;
+export declare const DIZZY_LONG_DRAG_MS = 4500;
+export declare const DIZZY_MIN_REAL_DRAG_PX = 24;
+export declare const DIZZY_FAST_DRAG_DISTANCE_PX = 420;
+export declare const DIZZY_FAST_DRAG_SPEED_PX_PER_SECOND = 550;
+/** Whether one completed drag is forceful or prolonged enough to cause dizziness. */
+export declare function shouldEnterDizzy(drag: WhaleDragResult): boolean;
 export declare class WhalePetService {
     private readonly storage;
     private readonly controller;
@@ -18,6 +26,7 @@ export declare class WhalePetService {
     private readonly timers;
     private readonly persisted;
     private activity;
+    private baseActivity;
     private effects;
     private bridge;
     private recapHistory;
@@ -28,6 +37,7 @@ export declare class WhalePetService {
     private nextRecapId;
     private observer;
     private external;
+    private dizzyTimer;
     private snapshot;
     private disposed;
     constructor(storage?: StorageLike | null);
@@ -39,11 +49,13 @@ export declare class WhalePetService {
     bindObserver(observer: SessionWhaleObserver): void;
     /** Wake a sleeping pet on hover/drag and refresh the session idle clock. */
     wake(): void;
+    /** Whether dizziness currently owns the pose and blocks pointer interaction. */
+    isDizzy(): boolean;
     /** The user is composing a reply (view-driven DOM focus); wakes the pet. */
     setUserTyping(typing: boolean): void;
     /** View-delegated interaction passthroughs. */
     setHover(hovering: boolean): void;
-    beginDrag(pointerX: number, pointerY: number): void;
+    beginDrag(pointerX: number, pointerY: number, startedAt?: number): void;
     wasClick(maximumDrag?: number): boolean;
     /**
      * Handle a click that stayed under the drag threshold. The view routes
@@ -53,7 +65,7 @@ export declare class WhalePetService {
      * the body zone (let the view run its own click handling).
      */
     handleZoneClick(zone: WhaleHitZone): boolean;
-    /** Replace the current mood; no-op for identical activity. */
+    /** Replace the session mood unless an unexpired interaction mood owns the pose. */
     setActivity(activity: WhaleActivity): void;
     /** Update the session-bridge lifecycle state (observer-owned). */
     setBridgeState(bridge: WhaleBridgeState): void;
@@ -75,7 +87,9 @@ export declare class WhalePetService {
     /** Persist the pet position after a drag release. */
     persistPosition(x: number, y: number): void;
     /** Record one session/interaction event for the click recap (dedupes repeats). */
-    pushRecap(text: string): void;
+    pushRecap(text: string): number | null;
+    /** Remove stale recap entries that were superseded by a later successful turn. */
+    discardRecaps(ids: ReadonlySet<number>): void;
     /**
      * Show a long-lived speech bubble (chat replies and API output) without
      * entering the session-event recap history. Truncated to a bubble-safe
@@ -91,8 +105,10 @@ export declare class WhalePetService {
      * flight.
      */
     setExternalMood(mood: WhaleMood, until: number): void;
-    /** Drop the external mood override; the observer resumes driving moods. */
-    clearExternalMood(): void;
+    /** Drop the matching external mood and restore the latest session activity. */
+    clearExternalMood(expectedMood?: WhaleMood): void;
+    /** Enter or refresh the fixed-duration dizzy reaction. */
+    enterDizzy(now?: number): void;
     /** The active external mood override, or null. */
     externalMood(): {
         mood: WhaleMood;
@@ -130,6 +146,7 @@ export declare class WhalePetService {
     private nameRecap;
     /** Release timers, listeners and the WebGL surface. */
     dispose(): void;
+    private applyActivity;
     private buildSnapshot;
     private publish;
 }

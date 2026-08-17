@@ -61,6 +61,11 @@
   cursor: grabbing;
 }
 
+.pet[data-whale-activity='dizzy'] .hitZone {
+  cursor: default;
+  pointer-events: none;
+}
+
 .hitBody {
   top: 47px;
   left: 54px;
@@ -262,6 +267,35 @@
   pointer-events: none;
   filter: drop-shadow(0 2px 4px rgb(20 48 140 / 45%));
   animation: sweat-drop 1400ms ease-in forwards;
+}
+
+.dizzyOrbit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dizzyStar {
+  position: absolute;
+  top: 63px;
+  left: 151px;
+  width: 19px;
+  height: 19px;
+  color: #f3b61f;
+  font: 800 19px/1 system-ui, sans-serif;
+  text-align: center;
+  text-shadow: 0 1px 4px rgb(104 72 0 / 32%);
+  transform-origin: center;
+  animation: dizzy-star-orbit 2400ms linear infinite;
+  will-change: transform, opacity;
+}
+
+.dizzyStarTwo {
+  animation-delay: -800ms;
+}
+
+.dizzyStarThree {
+  animation-delay: -1600ms;
 }
 
 .sleepMark {
@@ -533,6 +567,46 @@
   }
 }
 
+@keyframes dizzy-star-orbit {
+  0% {
+    z-index: 1;
+    opacity: 0.72;
+    transform: translate3d(88px, 0, 0) scale(0.9);
+  }
+
+  24% {
+    z-index: -1;
+  }
+
+  25% {
+    z-index: -1;
+    opacity: 0.38;
+    transform: translate3d(0, -34px, 0) scale(0.56);
+  }
+
+  50% {
+    z-index: 1;
+    opacity: 0.72;
+    transform: translate3d(-88px, 0, 0) scale(0.9);
+  }
+
+  74% {
+    z-index: 3;
+  }
+
+  75% {
+    z-index: 3;
+    opacity: 1;
+    transform: translate3d(0, 34px, 0) scale(1.24);
+  }
+
+  100% {
+    z-index: 1;
+    opacity: 0.72;
+    transform: translate3d(88px, 0, 0) scale(0.9);
+  }
+}
+
 @keyframes sleep-drift {
   0% {
     opacity: 0;
@@ -601,6 +675,8 @@
   .heart,
   .bubble,
   .sweat,
+  .dizzyOrbit,
+  .dizzyStar,
   .sleepMark,
   .speech,
   .listeningMark,
@@ -608,5 +684,22 @@
   .menu {
     animation-duration: 1ms;
     animation-iteration-count: 1;
+  }
+
+  .dizzyStar {
+    animation: none;
+    opacity: 0.8;
+  }
+
+  .dizzyStarOne {
+    transform: translate3d(78px, 0, 0) scale(0.9);
+  }
+
+  .dizzyStarTwo {
+    transform: translate3d(-42px, -28px, 0) scale(0.65);
+  }
+
+  .dizzyStarThree {
+    transform: translate3d(-34px, 28px, 0) scale(1.12);
   }
 }

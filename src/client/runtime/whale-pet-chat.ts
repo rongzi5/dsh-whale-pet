@@ -201,7 +201,7 @@ export class WhalePetChat {
       this.service.showBubble(CHAT_FAILURE_BUBBLE, ERROR_BUBBLE_MS)
     } finally {
       this.busy = false
-      this.service.clearExternalMood()
+      this.service.clearExternalMood('thinking')
     }
   }
 

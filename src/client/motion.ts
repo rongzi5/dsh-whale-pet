@@ -28,6 +28,14 @@ export interface WhaleMotionFrame {
   roll: number
 }
 
+/** Measurements for one completed pointer drag. */
+export interface WhaleDragResult {
+  durationMs: number
+  distance: number
+  averageSpeed: number
+  cancelled: boolean
+}
+
 interface EdgeCandidate {
   edge: 'left' | 'right' | 'top' | 'bottom'
   distance: number
@@ -63,6 +71,8 @@ export class WhaleMotionController {
   private dragTargetX: number
   private dragTargetY: number
   private dragDistance = 0
+  private dragStartedAt = 0
+  private lastDragResult: WhaleDragResult | null = null
 
   private mode: PetMode = 'idle'
   private moveTime = 0
@@ -154,7 +164,7 @@ export class WhaleMotionController {
     this.lastPointerY = y
   }
 
-  public beginDrag(pointerX: number, pointerY: number): void {
+  public beginDrag(pointerX: number, pointerY: number, startedAt = Date.now()): void {
     this.dragging = true
     this.hovering = true
     this.mode = 'dragging'
@@ -170,10 +180,19 @@ export class WhaleMotionController {
     this.lastPointerY = pointerY
     this.hasPointer = true
     this.dragDistance = 0
+    this.dragStartedAt = Number.isFinite(startedAt) ? startedAt : 0
+    this.lastDragResult = null
   }
 
-  public releaseDrag(): boolean {
+  public releaseDrag(releasedAt = Date.now(), cancelled = false): boolean {
     if (!this.dragging) return false
+    const durationMs = Math.max(0, (Number.isFinite(releasedAt) ? releasedAt : this.dragStartedAt) - this.dragStartedAt)
+    this.lastDragResult = Object.freeze({
+      durationMs,
+      distance: this.dragDistance,
+      averageSpeed: durationMs > 0 ? this.dragDistance / (durationMs / 1_000) : 0,
+      cancelled,
+    })
     this.dragging = false
     this.hovering = false
     this.vx = this.motionVelocityX * 0.45
@@ -192,15 +211,22 @@ export class WhaleMotionController {
     return true
   }
 
+  /** Return the latest completed drag once, so stale releases cannot retrigger effects. */
+  public consumeLastDragResult(): WhaleDragResult | null {
+    const result = this.lastDragResult
+    this.lastDragResult = null
+    return result
+  }
+
   /** Whether released drags glide to the nearest corner. */
   public setSnapToCorner(enabled: boolean): void {
     this.snapToCorner = enabled
     if (!enabled) this.settlingToCorner = false
   }
 
-  /** Glide to the nearest corner now (context-menu action); no-op while dragging. */
+  /** Glide to the nearest corner now unless an interaction owns the pose. */
   public snapToCornerNow(): void {
-    if (this.dragging || this.mode === 'loop') return
+    if (this.dragging || this.mode === 'loop' || this.activity.mood === 'dizzy') return
     this.beginCornerSnap()
   }
 
@@ -269,6 +295,15 @@ export class WhaleMotionController {
   public setActivity(activity: WhaleActivity): void {
     const previous = this.activity.mood
     this.activity = activity
+    if (activity.mood === 'dizzy') {
+      this.mode = 'idle'
+      this.settlingToCorner = false
+      this.moveTime = 0
+      this.vx = 0
+      this.vy = 0
+      this.angleTarget = 0
+      return
+    }
     const activeNow = isActiveMood(activity.mood)
     const activeBefore = isActiveMood(previous)
 
@@ -293,13 +328,13 @@ export class WhaleMotionController {
 
   /** Run one longer, full 360° loop; used for long-turn/goal celebrations. */
   public celebrate(): void {
-    if (this.mode === 'dragging') return
+    if (this.mode === 'dragging' || this.activity.mood === 'dizzy') return
     this.startCelebrationLoop()
   }
 
   /** Start the next patrol now (exposed for tests and future callers). */
   public patrolNow(): void {
-    if (this.mode === 'dragging') return
+    if (this.mode === 'dragging' || this.activity.mood === 'dizzy') return
     this.beginActivePatrol()
   }
 
@@ -333,6 +368,8 @@ export class WhaleMotionController {
       this.angleTarget = 0
       if (this.activity.mood === 'sleeping') {
         this.desiredPitch *= Math.exp(-2.5 * dt)
+      } else if (this.activity.mood === 'dizzy') {
+        this.desiredPitch *= Math.exp(-5 * dt)
       } else {
         this.desiredPitch *= Math.exp(-7 * dt)
         if (!this.hovering) {

@@ -7,6 +7,7 @@
  */
 
 import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleBridgeState, type WhaleEffect, type WhaleEffectKind, type WhaleMood, type WhalePetViewSnapshot, type WhaleRecap } from '../activity.ts'
+import type { WhaleDragResult } from '../motion.ts'
 import { WhalePetController, type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts'
 import type { SessionWhaleObserver } from './session-observer.ts'
 import { daysSince, loadWhalePetState, localDayKey, saveWhalePetState, type StorageLike, type WhalePetPersistedState } from '../persistence.ts'
@@ -22,6 +23,21 @@ const EFFECT_TTL_MS: Record<WhaleEffectKind, number> = {
 
 const CELEBRATION_HEART_INTERVAL_MS = 650
 const CELEBRATION_EFFECTS_MS = 7_000
+
+export const DIZZY_DURATION_MS = 4_000
+export const DIZZY_LONG_DRAG_MS = 4_500
+export const DIZZY_MIN_REAL_DRAG_PX = 24
+export const DIZZY_FAST_DRAG_DISTANCE_PX = 420
+export const DIZZY_FAST_DRAG_SPEED_PX_PER_SECOND = 550
+
+/** Whether one completed drag is forceful or prolonged enough to cause dizziness. */
+export function shouldEnterDizzy(drag: WhaleDragResult): boolean {
+  if (drag.cancelled) return false
+  if (!Number.isFinite(drag.durationMs) || !Number.isFinite(drag.distance) || !Number.isFinite(drag.averageSpeed)) return false
+  const prolonged = drag.durationMs >= DIZZY_LONG_DRAG_MS && drag.distance >= DIZZY_MIN_REAL_DRAG_PX
+  const forceful = drag.distance >= DIZZY_FAST_DRAG_DISTANCE_PX && drag.averageSpeed >= DIZZY_FAST_DRAG_SPEED_PX_PER_SECOND
+  return prolonged || forceful
+}
 
 /** Fresh sweat drops keep dripping through the whole error window. */
 const ERROR_SWEAT_INTERVAL_MS = 1_400
@@ -40,6 +56,7 @@ export class WhalePetService {
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
   private readonly persisted: WhalePetPersistedState
   private activity: WhaleActivity = IDLE_ACTIVITY
+  private baseActivity: WhaleActivity = IDLE_ACTIVITY
   private effects: readonly WhaleEffect[] = []
   private bridge: WhaleBridgeState = 'off'
   private recapHistory: readonly WhaleRecap[] = []
@@ -50,6 +67,7 @@ export class WhalePetService {
   private nextRecapId = 1
   private observer: SessionWhaleObserver | null = null
   private external: { mood: WhaleMood; until: number } | null = null
+  private dizzyTimer: ReturnType<typeof setTimeout> | null = null
   private snapshot!: WhalePetViewSnapshot
   private disposed = false
 
@@ -68,7 +86,13 @@ export class WhalePetService {
   /** Mount the view's DOM handles; restores the persisted position. Delegates to the controller unchanged. */
   public mount(targets: WhalePetTargets, hooks: WhalePetControllerHooks): boolean {
     if (this.disposed) return false
-    const started = this.controller.start(targets, hooks)
+    const started = this.controller.start(targets, {
+      ...hooks,
+      onRelease: (x, y, drag) => {
+        hooks.onRelease?.(x, y, drag)
+        if (shouldEnterDizzy(drag)) this.enterDizzy()
+      },
+    })
     if (started && this.persisted.x !== null && this.persisted.y !== null) {
       this.controller.motionController.restorePosition(this.persisted.x, this.persisted.y)
     }
@@ -87,9 +111,15 @@ export class WhalePetService {
 
   /** Wake a sleeping pet on hover/drag and refresh the session idle clock. */
   public wake(): void {
+    if (this.isDizzy()) return
     this.observer?.noteUserActivity()
     // setActivity already forwards the mood to the motion controller.
     this.setActivity(IDLE_ACTIVITY)
+  }
+
+  /** Whether dizziness currently owns the pose and blocks pointer interaction. */
+  public isDizzy(): boolean {
+    return this.activity.mood === 'dizzy'
   }
 
   /** The user is composing a reply (view-driven DOM focus); wakes the pet. */
@@ -100,11 +130,13 @@ export class WhalePetService {
 
   /** View-delegated interaction passthroughs. */
   public setHover(hovering: boolean): void {
+    if (this.isDizzy()) return
     this.controller.setHover(hovering)
   }
 
-  public beginDrag(pointerX: number, pointerY: number): void {
-    this.controller.beginDrag(pointerX, pointerY)
+  public beginDrag(pointerX: number, pointerY: number, startedAt?: number): void {
+    if (this.isDizzy()) return
+    this.controller.beginDrag(pointerX, pointerY, startedAt)
   }
 
   public wasClick(maximumDrag = 7): boolean {
@@ -119,7 +151,9 @@ export class WhalePetService {
    * the body zone (let the view run its own click handling).
    */
   public handleZoneClick(zone: WhaleHitZone): boolean {
-    if (this.disposed || !this.wasClick()) return false
+    if (this.disposed) return false
+    if (this.isDizzy()) return true
+    if (!this.wasClick()) return false
     switch (zone) {
       case 'tail':
         // 爱心 + 立刻巡游（下一档），不进入 celebration 绕圈。
@@ -139,12 +173,14 @@ export class WhalePetService {
     }
   }
 
-  /** Replace the current mood; no-op for identical activity. */
+  /** Replace the session mood unless an unexpired interaction mood owns the pose. */
   public setActivity(activity: WhaleActivity): void {
-    if (sameActivity(this.activity, activity)) return
-    this.activity = activity
-    this.controller.setActivity(activity)
-    this.publish()
+    this.baseActivity = activity
+    if (this.external !== null) {
+      if (Date.now() < this.external.until) return
+      this.external = null
+    }
+    this.applyActivity(activity)
   }
 
   /** Update the session-bridge lifecycle state (observer-owned). */
@@ -263,17 +299,32 @@ export class WhalePetService {
    */
   public setExternalMood(mood: WhaleMood, until: number): void {
     if (this.disposed) return
+    // Dizziness owns the pose until recovery; an actual error may still win.
+    if (this.external?.mood === 'dizzy' && Date.now() < this.external.until && mood !== 'dizzy' && mood !== 'error') return
     this.external = { mood, until }
-    this.activity = { mood, intensity: 1 }
-    this.controller.setActivity(this.activity)
-    this.publish()
+    this.applyActivity({ mood, intensity: 1 })
   }
 
-  /** Drop the external mood override; the observer resumes driving moods. */
-  public clearExternalMood(): void {
-    if (this.external === null) return
+  /** Drop the matching external mood and restore the latest session activity. */
+  public clearExternalMood(expectedMood?: WhaleMood): void {
+    if (this.external === null || (expectedMood !== undefined && this.external.mood !== expectedMood)) return
     this.external = null
-    this.publish()
+    this.applyActivity(this.baseActivity)
+  }
+
+  /** Enter or refresh the fixed-duration dizzy reaction. */
+  public enterDizzy(now = Date.now()): void {
+    if (this.disposed) return
+    const until = now + DIZZY_DURATION_MS
+    this.setExternalMood('dizzy', until)
+    if (this.external?.mood !== 'dizzy' || this.external.until !== until) return
+    if (this.dizzyTimer !== null) clearTimeout(this.dizzyTimer)
+    const activeOverride = this.external
+    this.dizzyTimer = setTimeout(() => {
+      this.dizzyTimer = null
+      if (this.disposed || this.external !== activeOverride) return
+      this.clearExternalMood('dizzy')
+    }, DIZZY_DURATION_MS)
   }
 
   /** The active external mood override, or null. */
@@ -411,18 +462,28 @@ export class WhalePetService {
     if (this.disposed) return
     this.disposed = true
     if (this.recapTimer !== null) clearTimeout(this.recapTimer)
+    if (this.dizzyTimer !== null) clearTimeout(this.dizzyTimer)
     this.recapTimer = null
+    this.dizzyTimer = null
     for (const timer of this.timers) clearTimeout(timer)
     this.timers.clear()
     this.listeners.clear()
     this.controller.dispose()
     this.effects = []
     this.activity = IDLE_ACTIVITY
+    this.baseActivity = IDLE_ACTIVITY
     this.bridge = 'off'
     this.recapCurrent = null
     this.external = null
     this.observer = null
     this.snapshot = this.buildSnapshot()
+  }
+
+  private applyActivity(activity: WhaleActivity): void {
+    if (sameActivity(this.activity, activity)) return
+    this.activity = activity
+    this.controller.setActivity(activity)
+    this.publish()
   }
 
   private buildSnapshot(): WhalePetViewSnapshot {

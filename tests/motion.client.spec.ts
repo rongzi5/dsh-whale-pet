@@ -217,4 +217,48 @@ describe('WhaleMotionController', () => {
     view = motion.step(0.04)
     expect(view.mode).toBe(1)
   })
+
+  it('reports completed drag distance, duration and average speed once', () => {
+    const motion = new WhaleMotionController(1280, 720, fixedRandom)
+    motion.beginDrag(800, 500, 1_000)
+    motion.pointerMove(500, 500)
+    motion.pointerMove(300, 500)
+
+    expect(motion.releaseDrag(1_800)).toBe(true)
+    expect(motion.consumeLastDragResult()).toEqual({
+      durationMs: 800,
+      distance: 500,
+      averageSpeed: 625,
+      cancelled: false,
+    })
+    expect(motion.consumeLastDragResult()).toBeNull()
+  })
+
+  it('marks pointer-cancelled drags without losing their measurements', () => {
+    const motion = new WhaleMotionController(1280, 720, fixedRandom)
+    motion.beginDrag(800, 500, 2_000)
+    motion.pointerMove(700, 500)
+
+    expect(motion.releaseDrag(3_000, true)).toBe(true)
+    expect(motion.consumeLastDragResult()).toMatchObject({
+      durationMs: 1_000,
+      distance: 100,
+      averageSpeed: 100,
+      cancelled: true,
+    })
+  })
+
+  it('holds position and suppresses patrols while dizzy', () => {
+    const motion = new WhaleMotionController(1280, 720, fixedRandom)
+    motion.restorePosition(600, 300)
+    motion.setActivity({ mood: 'dizzy', intensity: 1 })
+    motion.patrolNow()
+    motion.snapToCornerNow()
+
+    let view = motion.step(0.04)
+    for (let frame = 0; frame < 2_000; frame += 1) view = motion.step(0.04)
+    expect(view.mode).toBe(0)
+    expect(view.x).toBeCloseTo(600, 5)
+    expect(view.y).toBeCloseTo(300, 5)
+  })
 })

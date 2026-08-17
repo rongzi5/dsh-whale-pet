@@ -24,6 +24,9 @@ const SLEEP_EYE_SQUASH_AMPLITUDE = 0.06
 const SLEEP_EYE_SQUASH_FREQUENCY = 1.1
 const ERROR_EYE_STARTLE_BASE = 1
 const ERROR_EYE_STARTLE_PER_INTENSITY = 0.32
+const DIZZY_FLIP_RADIANS = Math.PI
+const DIZZY_WOBBLE_FREQUENCY = 3.8
+const DIZZY_WOBBLE_AMPLITUDE = 0.12
 
 /** Per-frame external pet state supplied by the parent. */
 export interface WhaleExternalState {
@@ -61,7 +64,7 @@ export interface WhaleAnimatorTargets {
 }
 
 export class WhaleAnimator {
-  private readonly f = { speed: 0, motionX: 0, motionY: 0, patrolLevel: 0, dragLevel: 0, yaw: 0, pitch: 0, roll: 0 }
+  private readonly f = { speed: 0, motionX: 0, motionY: 0, patrolLevel: 0, dragLevel: 0, dizzyLevel: 0, yaw: 0, pitch: 0, roll: 0 }
   private initialized = false
   private swimPhase = 0
   private motionPhase = 0
@@ -89,6 +92,7 @@ export class WhaleAnimator {
       this.f.motionY = motionYTarget
       this.f.patrolLevel = mode === 1 ? 1 : 0
       this.f.dragLevel = external.dragging ? 1 : 0
+      this.f.dizzyLevel = mood === 'dizzy' ? 1 : 0
       this.f.yaw = external.yaw
       this.f.pitch = external.pitch
       this.f.roll = external.roll
@@ -100,12 +104,15 @@ export class WhaleAnimator {
       this.f.motionY += (motionYTarget - this.f.motionY) * directionBlend
       this.f.patrolLevel += ((mode === 1 ? 1 : 0) - this.f.patrolLevel) * (1 - Math.exp(-7 * delta))
       this.f.dragLevel += ((external.dragging ? 1 : 0) - this.f.dragLevel) * (1 - Math.exp(-9 * delta))
+      this.f.dizzyLevel += ((mood === 'dizzy' ? 1 : 0) - this.f.dizzyLevel) * (1 - Math.exp(-5 * delta))
     }
 
     // effective swim frequency; the phase is INTEGRATED (never elapsed * speed)
     const swimBoost = mood === 'sleeping'
       ? 0.3
-      : mood === 'thinking'
+      : mood === 'dizzy'
+        ? 0.18
+        : mood === 'thinking'
         ? 1.2
         : mood === 'working'
           ? 1.35 + 0.2 * intensity
@@ -124,7 +131,8 @@ export class WhaleAnimator {
     const t = elapsedSeconds
     const bodyAmp = CFG.BODY_SWAY_AMPLITUDE * (
       mood === 'sleeping' ? 0.35
-        : mood === 'working' || mood === 'focused' ? 1.25
+        : mood === 'dizzy' ? 0.2
+          : mood === 'working' || mood === 'focused' ? 1.25
           : mood === 'celebrating' ? 1.4
             : mood === 'listening' || mood === 'awaiting' ? 0.8
               : 1
@@ -158,11 +166,13 @@ export class WhaleAnimator {
     model.rotation.x = pitchSway - this.f.motionY * motionEnergy * 0.1 + motionWave2 * patrolEnergy * 0.04
     model.rotation.z = rollSway + motionWave * patrolEnergy * 0.035
 
-    // pivot pose, bounce and squash/stretch; focused turns dive slightly.
+    // Pivot pose, bounce and squash/stretch. Dizziness rolls around the
+    // longitudinal body axis so the existing white belly faces the camera.
     const divePitch = mood === 'focused' ? -0.08 * intensity : mood === 'sleeping' ? 0.02 : 0
+    const dizzyWobble = Math.sin(t * DIZZY_WOBBLE_FREQUENCY) * DIZZY_WOBBLE_AMPLITUDE * this.f.dizzyLevel
     petPivot.rotation.y = this.f.yaw
-    petPivot.rotation.x = this.f.pitch - this.f.motionY * motionEnergy * 0.055 + divePitch
-    petPivot.rotation.z = this.f.roll + motionWave * motionEnergy * 0.02
+    petPivot.rotation.x = this.f.pitch - this.f.motionY * motionEnergy * 0.055 + divePitch + DIZZY_FLIP_RADIANS * this.f.dizzyLevel
+    petPivot.rotation.z = this.f.roll + motionWave * motionEnergy * 0.02 + dizzyWobble
     petPivot.position.y = motionBounce * patrolEnergy * 0.07 + motionWave * dragEnergy * 0.018
     // Error: rapid trembling so the reaction cannot be missed.
     petPivot.position.x = mood === 'error' ? Math.sin(t * ERROR_TREMBLE_FREQUENCY) * ERROR_TREMBLE_AMPLITUDE : 0
@@ -173,8 +183,8 @@ export class WhaleAnimator {
     )
 
     // tail fluke: swim sway + motion steering + movement waves
-    const tailAmpY = CFG.TAIL_SWAY_AMPLITUDE * (mood === 'sleeping' ? 0.35 : mood === 'celebrating' ? 1.4 : 1)
-    const tailAmpX = CFG.TAIL_PITCH_AMPLITUDE * (mood === 'sleeping' ? 0.4 : 1)
+    const tailAmpY = CFG.TAIL_SWAY_AMPLITUDE * (mood === 'sleeping' ? 0.35 : mood === 'dizzy' ? 0.16 : mood === 'celebrating' ? 1.4 : 1)
+    const tailAmpX = CFG.TAIL_PITCH_AMPLITUDE * (mood === 'sleeping' ? 0.4 : mood === 'dizzy' ? 0.18 : 1)
     const tailSwayY = Math.sin(this.swimPhase + 0.7) * tailAmpY
     const tailSwayX = Math.sin(this.swimPhase + 1.2) * tailAmpX
     tailGroup.rotation.y = tailSwayY - this.f.motionX * motionEnergy * 0.28 + motionWave * patrolEnergy * 0.2 + motionWave * dragEnergy * 0.08
@@ -184,7 +194,8 @@ export class WhaleAnimator {
     // pectoral fins: flapping + steering
     const pecAmp = CFG.PEC_FLAP_AMPLITUDE * (
       mood === 'sleeping' ? 0.3
-        : mood === 'working' || mood === 'focused' ? 1.3
+        : mood === 'dizzy' ? 0.12
+          : mood === 'working' || mood === 'focused' ? 1.3
           : mood === 'listening' || mood === 'awaiting' ? 0.8
             : 1
     )

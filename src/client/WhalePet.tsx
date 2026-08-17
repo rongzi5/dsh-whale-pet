@@ -227,7 +227,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   }
 
   const pointerEnter = (event: PointerEvent<HTMLElement>): void => {
-    if (isPetDescendant(event.relatedTarget)) return
+    if (whalePet.isDizzy() || isPetDescendant(event.relatedTarget)) return
     whalePet.wake()
     whalePet.setHover(true)
     react()
@@ -241,13 +241,15 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const pointerDown = (event: PointerEvent<HTMLElement>): void => {
     event.preventDefault()
     event.stopPropagation()
+    if (whalePet.isDizzy()) return
     event.currentTarget.setPointerCapture(event.pointerId)
     whalePet.wake()
-    whalePet.beginDrag(event.clientX, event.clientY)
+    whalePet.beginDrag(event.clientX, event.clientY, event.timeStamp)
   }
 
   const clickZone = (zone: WhaleHitZone) => (event: ReactMouseEvent<HTMLElement>): void => {
     event.stopPropagation()
+    if (whalePet.isDizzy()) return
     if (Date.now() - lastContextMenuAt.current < CLICK_AFTER_CONTEXT_MENU_MS) return
     if (whalePet.handleZoneClick(zone)) return
     if (whalePet.wasClick() === true) {
@@ -268,6 +270,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const openMenu = (event: ReactMouseEvent<HTMLElement>): void => {
     event.preventDefault()
     event.stopPropagation()
+    if (whalePet.isDizzy()) return
     lastContextMenuAt.current = Date.now()
     const maxX = (window.innerWidth ?? 0) - MENU_WIDTH - 8
     const maxY = (window.innerHeight ?? 0) - MENU_HEIGHT - 8
@@ -345,6 +348,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     onContextMenu: openMenu,
   })
   const sleeping = snapshot.activity.mood === 'sleeping'
+  const dizzy = snapshot.activity.mood === 'dizzy'
   const listening = snapshot.activity.mood === 'listening' || snapshot.activity.mood === 'awaiting'
   const hearts = snapshot.effects.filter(effect => effect.kind === 'heart')
   const bubbles = snapshot.effects.filter(effect => effect.kind === 'bubble')
@@ -401,6 +405,13 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
         {sweat.map(drop => (
           <span key={drop.id} className={styles.sweat} aria-hidden="true">💧</span>
         ))}
+        {dizzy ? (
+          <span className={styles.dizzyOrbit} aria-hidden="true">
+            <span className={`${styles.dizzyStar} ${styles.dizzyStarOne}`}>★</span>
+            <span className={`${styles.dizzyStar} ${styles.dizzyStarTwo}`}>★</span>
+            <span className={`${styles.dizzyStar} ${styles.dizzyStarThree}`}>★</span>
+          </span>
+        ) : null}
         {sleeping ? (
           <>
             <span key="zzz-1" className={`${styles.sleepMark} ${styles.sleepMarkOne}`} aria-hidden="true">z</span>

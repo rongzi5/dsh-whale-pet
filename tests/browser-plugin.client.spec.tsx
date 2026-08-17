@@ -238,4 +238,31 @@ describe('ui-whale-pet chat bubble', () => {
     host.remove()
     service.dispose()
   })
+
+  it('renders the dizzy activity marker and three orbiting stars', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const service = new WhalePetService()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root: Root = createRoot(host)
+    root.render(React.createElement(WhalePet, { whalePet: service }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+
+    service.enterDizzy()
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(host.querySelector('[data-whale-activity="dizzy"]')).not.toBeNull()
+    expect([...host.querySelectorAll('span')].filter(node => node.textContent === '★')).toHaveLength(3)
+
+    const hitZone = host.querySelector('button[aria-label="DeepSeek 3D whale pet"]')
+    hitZone?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 90 }))
+    hitZone?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(host.querySelector('[role="menu"]')).toBeNull()
+    expect(service.getSnapshot().effects).toHaveLength(0)
+    expect(service.getSnapshot().recap).toBeNull()
+
+    root.unmount()
+    host.remove()
+    service.dispose()
+  })
 })

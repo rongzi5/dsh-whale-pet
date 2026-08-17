@@ -13,7 +13,7 @@
  */
 
 import { IDLE_ACTIVITY, type WhaleActivity } from '../activity.ts'
-import { PET_HEIGHT, PET_WIDTH, WhaleMotionController } from '../motion.ts'
+import { PET_HEIGHT, PET_WIDTH, WhaleMotionController, type WhaleDragResult } from '../motion.ts'
 import { createWhaleScene, type WhaleScene } from '../whale/scene.ts'
 import { WhaleRenderScheduler, type WhaleTick } from './scheduler.ts'
 
@@ -32,8 +32,8 @@ export interface WhalePetTargets {
 export interface WhalePetControllerHooks {
   /** Called when the Three.js scene cannot be created or rendered. */
   onError(message: string): void
-  /** Called after a drag release with the pet's final position (px). */
-  onRelease?(x: number, y: number): void
+  /** Called after a drag release with the final position and gesture measurements. */
+  onRelease?(x: number, y: number, drag: WhaleDragResult): void
 }
 
 export class WhalePetController {
@@ -89,8 +89,8 @@ export class WhalePetController {
     this.resize()
     browser.addEventListener('resize', this.resize)
     doc.addEventListener('pointermove', this.handlePointerMove, { passive: true })
-    doc.addEventListener('pointerup', this.handleRelease, { passive: true })
-    doc.addEventListener('pointercancel', this.handleRelease, { passive: true })
+    doc.addEventListener('pointerup', this.handlePointerUp, { passive: true })
+    doc.addEventListener('pointercancel', this.handlePointerCancel, { passive: true })
     // Hidden pets do not need a frame chain until they are shown again.
     if (!this.hidden) this.scheduler.start(this.render)
     return true
@@ -111,8 +111,8 @@ export class WhalePetController {
     if (browser !== null && doc !== null) {
       browser.removeEventListener('resize', this.resize)
       doc.removeEventListener('pointermove', this.handlePointerMove)
-      doc.removeEventListener('pointerup', this.handleRelease)
-      doc.removeEventListener('pointercancel', this.handleRelease)
+      doc.removeEventListener('pointerup', this.handlePointerUp)
+      doc.removeEventListener('pointercancel', this.handlePointerCancel)
     }
 
     this.scene?.dispose()
@@ -134,9 +134,9 @@ export class WhalePetController {
     this.motion.setHover(hovering)
   }
 
-  /** Start a drag from viewport coordinates. */
-  public beginDrag(pointerX: number, pointerY: number): void {
-    this.motion.beginDrag(pointerX, pointerY)
+  /** Start a drag from viewport coordinates and the pointer event clock. */
+  public beginDrag(pointerX: number, pointerY: number, startedAt?: number): void {
+    this.motion.beginDrag(pointerX, pointerY, startedAt)
   }
 
   /** Update the pointer position (both hover look and drag follow). */
@@ -204,11 +204,20 @@ export class WhalePetController {
     this.motion.pointerMove(event.clientX, event.clientY)
   }
 
-  private readonly handleRelease = (): void => {
-    if (this.motion.releaseDrag()) {
-      const { x, y } = this.motion.position
-      this.hooks?.onRelease?.(x, y)
-    }
+  private readonly handlePointerUp = (event: globalThis.PointerEvent): void => {
+    this.finishDrag(event.timeStamp, false)
+  }
+
+  private readonly handlePointerCancel = (event: globalThis.PointerEvent): void => {
+    this.finishDrag(event.timeStamp, true)
+  }
+
+  private finishDrag(releasedAt: number, cancelled: boolean): void {
+    if (!this.motion.releaseDrag(releasedAt, cancelled)) return
+    const drag = this.motion.consumeLastDragResult()
+    if (drag === null) return
+    const { x, y } = this.motion.position
+    this.hooks?.onRelease?.(x, y, drag)
   }
 
   private readonly render = (tick: WhaleTick): void => {

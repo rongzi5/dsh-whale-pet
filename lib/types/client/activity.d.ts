@@ -16,6 +16,8 @@ export type WhaleMood =
  | 'celebrating'
 /** A tool call or turn failed. */
  | 'error'
+/** A vigorous or prolonged drag left the pet temporarily disoriented. */
+ | 'dizzy'
 /** No activity for a long time. */
  | 'sleeping'
 /** The user is composing a reply in the chat input. */

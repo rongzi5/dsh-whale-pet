@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { WhaleMotionController } from '../src/client/motion.ts'
 import { loadWhalePetState, type StorageLike } from '../src/client/persistence.ts'
-import { WhalePetService } from '../src/client/runtime/whale-pet-service.ts'
+import { DIZZY_DURATION_MS, WhalePetService, shouldEnterDizzy } from '../src/client/runtime/whale-pet-service.ts'
 
 class FakeStorage implements StorageLike {
   private readonly map = new Map<string, string>()
@@ -153,6 +153,60 @@ describe('WhalePetService', () => {
     expect(service.getSnapshot().name).toBe('鲸鲸')
     service.dispose()
   })
+
+  it('classifies forceful and prolonged drags without treating holds or cancellations as dizzy', () => {
+    expect(shouldEnterDizzy({ durationMs: 700, distance: 430, averageSpeed: 614, cancelled: false })).toBe(true)
+    expect(shouldEnterDizzy({ durationMs: 4_600, distance: 30, averageSpeed: 6.5, cancelled: false })).toBe(true)
+    expect(shouldEnterDizzy({ durationMs: 8_000, distance: 0, averageSpeed: 0, cancelled: false })).toBe(false)
+    expect(shouldEnterDizzy({ durationMs: 700, distance: 430, averageSpeed: 614, cancelled: true })).toBe(false)
+    expect(shouldEnterDizzy({ durationMs: 2_000, distance: 200, averageSpeed: 100, cancelled: false })).toBe(false)
+  })
+
+  it('restores the latest session mood after dizziness expires', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-07T09:00:00Z'))
+    const service = new WhalePetService()
+    service.setActivity({ mood: 'working', intensity: 0.7 })
+    service.enterDizzy()
+    expect(service.getSnapshot().activity.mood).toBe('dizzy')
+
+    service.setActivity({ mood: 'focused', intensity: 0.9 })
+    vi.advanceTimersByTime(DIZZY_DURATION_MS)
+    expect(service.getSnapshot().activity).toEqual({ mood: 'focused', intensity: 0.9 })
+
+    service.dispose()
+    vi.useRealTimers()
+  })
+
+  it('refreshes dizziness without letting an older timer clear the new state', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-07T09:00:00Z'))
+    const service = new WhalePetService()
+    service.enterDizzy()
+    vi.advanceTimersByTime(2_000)
+    service.enterDizzy()
+
+    vi.advanceTimersByTime(2_100)
+    expect(service.getSnapshot().activity.mood).toBe('dizzy')
+    vi.advanceTimersByTime(1_900)
+    expect(service.getSnapshot().activity.mood).toBe('idle')
+
+    service.dispose()
+    vi.useRealTimers()
+  })
+
+  it('does not clear a newer dizzy or error override as if it were chat thinking', () => {
+    const service = new WhalePetService()
+    service.setExternalMood('thinking', Date.now() + 30_000)
+    service.enterDizzy()
+    service.clearExternalMood('thinking')
+    expect(service.getSnapshot().activity.mood).toBe('dizzy')
+
+    service.setExternalMood('error', Date.now() + 3_000)
+    service.clearExternalMood('dizzy')
+    expect(service.getSnapshot().activity.mood).toBe('error')
+    service.dispose()
+  })
 })
 
 describe('WhalePetService.handleZoneClick', () => {
@@ -199,6 +253,26 @@ describe('WhalePetService.handleZoneClick', () => {
     motion.pointerMove(60, 100)
     expect(service.handleZoneClick('fin')).toBe(false)
     expect(service.getSnapshot().effects).toHaveLength(0)
+    service.dispose()
+  })
+
+  it('consumes all pointer-driven interactions while dizzy', () => {
+    const service = new WhalePetService()
+    const motion = motionOf(service)
+    service.setActivity({ mood: 'focused', intensity: 0.8 })
+    service.enterDizzy()
+
+    service.wake()
+    service.setHover(true)
+    service.beginDrag(100, 100, 1_000)
+    expect(service.handleZoneClick('tail')).toBe(true)
+
+    const frame = motion.step(1 / 60)
+    expect(service.getSnapshot().activity.mood).toBe('dizzy')
+    expect(service.getSnapshot().effects).toHaveLength(0)
+    expect(frame.dragging).toBe(false)
+    expect(frame.hover).toBe(false)
+    expect(frame.mode).toBe(0)
     service.dispose()
   })
 })

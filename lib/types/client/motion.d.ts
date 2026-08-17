@@ -17,6 +17,13 @@ export interface WhaleMotionFrame {
     pitch: number;
     roll: number;
 }
+/** Measurements for one completed pointer drag. */
+export interface WhaleDragResult {
+    durationMs: number;
+    distance: number;
+    averageSpeed: number;
+    cancelled: boolean;
+}
 /** Frame-rate-independent screen-space motion for the whale overlay. */
 export declare class WhaleMotionController {
     private readonly random;
@@ -38,6 +45,8 @@ export declare class WhaleMotionController {
     private dragTargetX;
     private dragTargetY;
     private dragDistance;
+    private dragStartedAt;
+    private lastDragResult;
     private mode;
     private moveTime;
     private moveDuration;
@@ -75,11 +84,13 @@ export declare class WhaleMotionController {
     /** Screen direction to continuous model yaw (0 = facing left, π = facing right). */
     private directionYaw;
     pointerMove(x: number, y: number): void;
-    beginDrag(pointerX: number, pointerY: number): void;
-    releaseDrag(): boolean;
+    beginDrag(pointerX: number, pointerY: number, startedAt?: number): void;
+    releaseDrag(releasedAt?: number, cancelled?: boolean): boolean;
+    /** Return the latest completed drag once, so stale releases cannot retrigger effects. */
+    consumeLastDragResult(): WhaleDragResult | null;
     /** Whether released drags glide to the nearest corner. */
     setSnapToCorner(enabled: boolean): void;
-    /** Glide to the nearest corner now (context-menu action); no-op while dragging. */
+    /** Glide to the nearest corner now unless an interaction owns the pose. */
     snapToCornerNow(): void;
     /** Restore a persisted position, clamped to the current viewport. */
     restorePosition(x: number | null, y: number | null): void;

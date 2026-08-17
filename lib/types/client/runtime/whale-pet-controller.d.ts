@@ -12,7 +12,7 @@
  * touching the view, while the view remains a thin overlay shell.
  */
 import { type WhaleActivity } from '../activity.ts';
-import { WhaleMotionController } from '../motion.ts';
+import { WhaleMotionController, type WhaleDragResult } from '../motion.ts';
 /** DOM handles the view lends to the runtime for the lifetime of one mount. */
 export interface WhalePetTargets {
     root: HTMLDivElement;
@@ -23,8 +23,8 @@ export interface WhalePetTargets {
 export interface WhalePetControllerHooks {
     /** Called when the Three.js scene cannot be created or rendered. */
     onError(message: string): void;
-    /** Called after a drag release with the pet's final position (px). */
-    onRelease?(x: number, y: number): void;
+    /** Called after a drag release with the final position and gesture measurements. */
+    onRelease?(x: number, y: number, drag: WhaleDragResult): void;
 }
 export declare class WhalePetController {
     private readonly motion;
@@ -59,8 +59,8 @@ export declare class WhalePetController {
     get motionController(): WhaleMotionController;
     /** Pointer hover edge transitions; delegates straight to the motion controller. */
     setHover(hovering: boolean): void;
-    /** Start a drag from viewport coordinates. */
-    beginDrag(pointerX: number, pointerY: number): void;
+    /** Start a drag from viewport coordinates and the pointer event clock. */
+    beginDrag(pointerX: number, pointerY: number, startedAt?: number): void;
     /** Update the pointer position (both hover look and drag follow). */
     pointerMove(pointerX: number, pointerY: number): void;
     /** End a drag; returns whether the controller was actually dragging. */
@@ -79,6 +79,8 @@ export declare class WhalePetController {
     get currentYaw(): number;
     private readonly resize;
     private readonly handlePointerMove;
-    private readonly handleRelease;
+    private readonly handlePointerUp;
+    private readonly handlePointerCancel;
+    private finishDrag;
     private readonly render;
 }

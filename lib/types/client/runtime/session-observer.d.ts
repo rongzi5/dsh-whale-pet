@@ -84,6 +84,8 @@ export declare class SessionWhaleObserver {
     private turnStartedAt;
     private lastActivityAt;
     private lastErrorSeq;
+    /** Failure recaps emitted by the currently running turn. */
+    private turnErrorRecapIds;
     private knownGoalPhase;
     private knownPlanActive;
     private transient;

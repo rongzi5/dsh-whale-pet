@@ -32,6 +32,9 @@ for (const file of ['package.json', 'lib/index.js', 'lib/client.js']) {
 }
 
 const pluginDir = join(profileDir, 'plugins', 'ui-whale-pet')
+if (resolve(repoRoot) === resolve(pluginDir)) {
+  fail(`source directory is the active install target (${pluginDir}); run this installer from a separate source checkout`)
+}
 console.log(`install-profile: installing ${pluginId} into ${profileDir}`)
 
 // 1. Copy the runnable package (package.json, lib/, docs, license).
@@ -61,6 +64,16 @@ if (existsSync(manifestPath)) {
 }
 manifest.dependencies ??= {}
 manifest.dependencies[pluginId] = `link:${pluginDir}`
+
+// Older installers could classify this client-injection package as a profile
+// bundle. It has no bundle patch by design; remove that stale entry while
+// preserving the user's actual bundle layers.
+const bundles = manifest.dsh?.profile?.bundles
+if (Array.isArray(bundles) && bundles.includes(pluginId)) {
+  manifest.dsh.profile.bundles = bundles.filter((name) => name !== pluginId)
+  console.warn(`install-profile: removed stale bundle entry for ${pluginId}`)
+}
+
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
 // 3. Materialize the node_modules link Node resolution will use.

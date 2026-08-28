@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-whale-pet",
   "description": "Frame-wide 3D whale desktop pet with edge habitat, hover reactions, and smooth shape-aware dragging",
-  "version": "0.1.0-rc.6",
+  "version": "0.1.0-rc.7",
   "publishConfig": {
     "access": "public"
   },
@@ -53,10 +53,8 @@
     "@deepseek-ai/dsh-invariants": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-jobs": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-subagent": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-workspace": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-jobs": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
@@ -70,10 +68,8 @@
     "@deepseek-ai/dsh-invariants": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-jobs": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-subagent": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-workspace": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-jobs": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
     "@types/node": "^24.0.0",
     "@types/react": "~18.3.1",

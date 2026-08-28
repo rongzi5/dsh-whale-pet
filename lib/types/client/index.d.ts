@@ -1,5 +1,13 @@
 /** Persistent browser plugin for the frame-wide 3D whale pet. */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
+declare module "@deepseek-ai/dsh-client-ui-slots" {
+    interface SlotMap {
+        "shell.overlay": {
+            kind: "list";
+            scope: "root";
+        };
+    }
+}
 export { WhaleMotionController, type WhaleMotionFrame } from './motion.ts';
 export { WhalePet, type WhalePetProps } from './WhalePet.tsx';
 export { SessionWhaleObserver, deriveWhaleActivity } from './runtime/session-observer.ts';

@@ -582,4 +582,128 @@ describe('SessionWhaleObserver', () => {
     observer.dispose()
     service.dispose()
   })
+
+  it('treats a current-contract SessionSnapshot (running only) as active without crashing', () => {
+    const list = createObservable<{ current?: string }>({ current: 'session-1' })
+    // Current DSH's SessionSnapshot no longer carries nodes/partial/runningCalls
+    // on the session face; those live in the ui-conversation chat target.
+    const conversation = createObservable<{
+      running: boolean
+      lastAgentError: string | null
+    }>({ running: true, lastAgentError: null })
+    const session = {
+      ...conversation,
+      projections: {
+        faceOf(): ObservableLike<unknown> {
+          throw new Error('unexpected projection')
+        },
+      },
+    }
+    const sessions = {
+      list,
+      binding(id: string): { session: typeof session } | undefined {
+        return id === 'session-1' ? { session } : undefined
+      },
+    }
+    const service = new WhalePetService()
+    const observer = new SessionWhaleObserver({ sessions }, service)
+    service.bindObserver(observer)
+    observer.start()
+
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('working')
+    expect(observer.getProgress()).toMatchObject({ active: true, running: true, tools: [] })
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('reads the current chat target for running tool names in the progress snapshot', () => {
+    const list = createObservable<{ current?: string }>({ current: 'session-1' })
+    const conversation = createObservable<{
+      running: boolean
+      lastAgentError: string | null
+    }>({ running: true, lastAgentError: null })
+    const chat = createObservable<{
+      legacy?: {
+        nodes?: unknown[]
+        partial?: { blocks: readonly unknown[] } | null
+        runningCalls?: { name?: string }[]
+      }
+    }>({
+      legacy: {
+        nodes: [],
+        partial: null,
+        runningCalls: [{ name: 'bash' }],
+      },
+    })
+    const session = {
+      ...conversation,
+      projections: {
+        faceOf(): ObservableLike<unknown> {
+          throw new Error('unexpected projection')
+        },
+      },
+    }
+    const sessions = {
+      list,
+      binding(id: string): { session: typeof session } | undefined {
+        return id === 'session-1' ? { session } : undefined
+      },
+    }
+    const uiConversation = {
+      binding(): { target: (target: string) => typeof chat | undefined } {
+        return {
+          target: (target: string) => (target === 'chat' ? chat : undefined),
+        }
+      },
+    }
+    const service = new WhalePetService()
+    const observer = new SessionWhaleObserver({ sessions, uiConversation }, service)
+    service.bindObserver(observer)
+    observer.start()
+
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('working')
+    expect(observer.getProgress()).toMatchObject({ active: true, running: true, tools: ['bash'] })
+
+    observer.dispose()
+    service.dispose()
+  })
+
+  it('reads pending interactions from uiSession on current DSH', () => {
+    const list = createObservable<{ current?: string }>({ current: 'session-1' })
+    const conversation = createObservable<{
+      running: boolean
+      lastAgentError: string | null
+    }>({ running: true, lastAgentError: null })
+    const pending = createObservable<ReadonlyMap<string, { kind?: string }>>(new Map([
+      ['session-1', { kind: 'approval' }],
+    ]))
+    const session = {
+      ...conversation,
+      projections: {
+        faceOf(): ObservableLike<unknown> {
+          throw new Error('unexpected projection')
+        },
+      },
+    }
+    const sessions = {
+      list,
+      binding(id: string): { session: typeof session } | undefined {
+        return id === 'session-1' ? { session } : undefined
+      },
+    }
+    const service = new WhalePetService()
+    const observer = new SessionWhaleObserver({ sessions, uiSession: { pendingInteractions: pending } }, service)
+    service.bindObserver(observer)
+    observer.start()
+
+    vi.advanceTimersByTime(200)
+    expect(service.getSnapshot().activity.mood).toBe('awaiting')
+    expect(observer.getProgress()).toMatchObject({ pendingInteraction: 'approval' })
+
+    observer.dispose()
+    service.dispose()
+  })
 })

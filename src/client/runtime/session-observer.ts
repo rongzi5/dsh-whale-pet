@@ -37,10 +37,18 @@ interface SessionListLike {
 
 interface ConversationLike {
   running: boolean
-  partial: { blocks: readonly unknown[] } | null
-  runningCalls: readonly unknown[]
-  nodes: readonly ConversationNodeLike[]
+  /** Old client runtimes kept the assembled conversation on the session face. */
+  partial?: { blocks: readonly unknown[] } | null
+  runningCalls?: readonly unknown[]
+  nodes?: readonly ConversationNodeLike[]
   lastAgentError?: string | null
+}
+
+/** Current DSH keeps conversation nodes in the `chat` Conversation target. */
+interface ChatLegacyLike {
+  nodes?: readonly ConversationNodeLike[]
+  partial?: { blocks: readonly unknown[] } | null
+  runningCalls?: readonly unknown[]
 }
 
 interface ConversationNodeLike {
@@ -75,8 +83,22 @@ interface SessionsLike {
   binding(id: string): SessionBindingLike | undefined
 }
 
+interface ConversationBindingLike {
+  target(target: string): ObservableLike<unknown> | undefined
+}
+
+interface UiConversationLike {
+  binding(id: string): ConversationBindingLike | undefined
+}
+
+interface UiSessionLike {
+  pendingInteractions?: ObservableLike<ReadonlyMap<string, { kind?: string }>>
+}
+
 export interface WhaleSessionClientContext {
   sessions?: SessionsLike
+  uiConversation?: UiConversationLike
+  uiSession?: UiSessionLike
 }
 
 interface TransientMood {
@@ -90,6 +112,79 @@ interface ErrorMark {
   kind: 'tool-result' | 'turn-error'
   exitCode?: number
   toolName?: string
+}
+
+/** Normalized conversation state read from either DSH contract generation. */
+interface LiveConversation {
+  running: boolean
+  partial: { blocks: readonly unknown[] } | null
+  runningCalls: readonly unknown[]
+  nodes: readonly ConversationNodeLike[]
+  lastAgentError?: string | null
+  source: 'session' | 'chat' | 'fallback'
+}
+
+function readLiveConversation(
+  snapshot: ConversationLike,
+  chatTarget: ObservableLike<unknown> | null,
+): LiveConversation {
+  const directPartial = snapshot.partial
+  const directCalls = snapshot.runningCalls
+  const directNodes = snapshot.nodes
+  const hasDirect = directNodes !== undefined
+    || directCalls !== undefined
+    || (directPartial !== undefined && directPartial !== null)
+  if (hasDirect) {
+    return {
+      running: snapshot.running,
+      partial: directPartial ?? null,
+      runningCalls: directCalls ?? [],
+      nodes: directNodes ?? [],
+      lastAgentError: snapshot.lastAgentError,
+      source: 'session',
+    }
+  }
+  const chat = readChatLegacy(chatTarget)
+  if (chat !== null) {
+    return {
+      running: snapshot.running,
+      partial: chat.partial ?? null,
+      runningCalls: chat.runningCalls ?? [],
+      nodes: chat.nodes ?? [],
+      lastAgentError: snapshot.lastAgentError,
+      source: 'chat',
+    }
+  }
+  return {
+    running: snapshot.running,
+    partial: null,
+    runningCalls: [],
+    nodes: [],
+    lastAgentError: snapshot.lastAgentError,
+    source: 'fallback',
+  }
+}
+
+function readChatLegacy(target: ObservableLike<unknown> | null): ChatLegacyLike | null {
+  if (target === null) return null
+  try {
+    const value = target.getSnapshot() as { legacy?: ChatLegacyLike } | null | undefined
+    return value?.legacy ?? null
+  } catch {
+    return null
+  }
+}
+
+function safeChatTarget(
+  ctx: WhaleSessionClientContext,
+  sessionId: string | undefined,
+): ObservableLike<unknown> | null {
+  if (sessionId === undefined) return null
+  try {
+    return ctx.uiConversation?.binding?.(sessionId)?.target?.('chat') ?? null
+  } catch {
+    return null
+  }
 }
 
 function latestError(nodes: readonly ConversationNodeLike[]): ErrorMark | null {
@@ -217,6 +312,7 @@ export class SessionWhaleObserver {
   private session: SessionFaceLike | null = null
   private goalFace: ObservableLike<unknown> | null = null
   private planFace: ObservableLike<unknown> | null = null
+  private chatTarget: ObservableLike<unknown> | null = null
 
   private wasRunning = false
   private turnStartedAt = 0
@@ -270,6 +366,7 @@ export class SessionWhaleObserver {
     this.session = null
     this.goalFace = null
     this.planFace = null
+    this.chatTarget = null
     this.service.setBridgeState('off')
   }
 
@@ -298,26 +395,34 @@ export class SessionWhaleObserver {
     } catch {
       return null
     }
-    const hasPartial = snapshot.partial !== null && snapshot.partial.blocks.length > 0
-    const active = snapshot.running || hasPartial || snapshot.runningCalls.length > 0
-    const tools = snapshot.runningCalls
+    const live = readLiveConversation(snapshot, this.currentChatTarget())
+    const hasPartial = live.partial !== null && live.partial.blocks.length > 0
+    const active = live.running || hasPartial || live.runningCalls.length > 0
+    const tools = live.runningCalls
       .map(call => (typeof (call as { name?: unknown }).name === 'string' ? (call as { name: string }).name : 'tool'))
       .slice(0, 5)
-    const lastNode = snapshot.nodes[snapshot.nodes.length - 1]
+    const lastNode = live.nodes[live.nodes.length - 1]
     const lastTool = lastNode?.call?.name
-    const pending = readPendingInteraction(this.sessions, this.sessionId)
+    const pending = readPendingInteraction(this.ctx, this.sessions, this.sessionId)
     return {
       sessionId: this.sessionId,
       active,
-      running: snapshot.running,
+      running: live.running,
       tools,
-      turnMs: snapshot.running ? Math.max(0, Date.now() - this.turnStartedAt) : 0,
-      nodeCount: snapshot.nodes.length,
+      turnMs: live.running ? Math.max(0, Date.now() - this.turnStartedAt) : 0,
+      nodeCount: live.nodes.length,
       ...(lastTool !== undefined ? { lastTool } : {}),
       ...(this.knownGoalPhase !== undefined ? { goalPhase: this.knownGoalPhase } : {}),
       ...(this.knownPlanActive !== undefined ? { planActive: this.knownPlanActive } : {}),
       ...(pending !== undefined ? { pendingInteraction: pending } : {}),
     }
+  }
+
+  private currentChatTarget(): ObservableLike<unknown> | null {
+    if (this.chatTarget === null && this.sessionId !== undefined) {
+      this.chatTarget = safeChatTarget(this.ctx, this.sessionId)
+    }
+    return this.chatTarget
   }
 
   /**
@@ -370,6 +475,7 @@ export class SessionWhaleObserver {
       this.session = null
       this.goalFace = null
       this.planFace = null
+      this.chatTarget = null
       this.wasRunning = false
       this.turnStartedAt = 0
       this.lastActivityAt = Date.now()
@@ -393,20 +499,24 @@ export class SessionWhaleObserver {
     this.session = binding.session
     this.goalFace = safeProjection(binding.session, 'goal')
     this.planFace = safeProjection(binding.session, 'plan')
+    this.chatTarget = safeChatTarget(this.ctx, current)
     this.sessionDispose = binding.session.subscribe(() => {
       if (this.sessions === sessions) this.sample(sessions)
     })
     this.seedProjections()
     const snapshot = binding.session.getSnapshot()
+    const live = readLiveConversation(snapshot, this.chatTarget)
     this.boundAt = Date.now()
-    this.wasRunning = snapshot.running
-    this.turnStartedAt = snapshot.running ? Date.now() : 0
+    this.wasRunning = live.running
+    this.turnStartedAt = live.running ? Date.now() : 0
     this.lastActivityAt = Date.now()
-    this.lastErrorSeq = latestError(snapshot.nodes)?.seq ?? -1
+    this.lastErrorSeq = latestError(live.nodes)?.seq ?? -1
     console.debug('[ui-whale-pet] session bridge bound', current, {
-      running: snapshot.running,
-      calls: snapshot.runningCalls.length,
-      partial: snapshot.partial !== null,
+      running: live.running,
+      calls: live.runningCalls.length,
+      partial: live.partial !== null,
+      nodes: live.nodes.length,
+      source: live.source,
     })
   }
 
@@ -425,12 +535,13 @@ export class SessionWhaleObserver {
 
     const session = this.session
     const snapshot = session.getSnapshot()
+    const live = readLiveConversation(snapshot, this.currentChatTarget())
     const now = Date.now()
-    const hasPartial = snapshot.partial !== null && snapshot.partial.blocks.length > 0
-    const hasCalls = snapshot.runningCalls.length > 0
-    const active = snapshot.running || hasPartial || hasCalls
+    const hasPartial = live.partial !== null && live.partial.blocks.length > 0
+    const hasCalls = live.runningCalls.length > 0
+    const active = live.running || hasPartial || hasCalls
     if (active) this.lastActivityAt = now
-    if (snapshot.running && !this.wasRunning) {
+    if (live.running && !this.wasRunning) {
       this.turnErrorRecapIds.clear()
       this.turnStartedAt = now
     }
@@ -439,17 +550,17 @@ export class SessionWhaleObserver {
     // load asynchronously after binding, so late-arriving OLD nodes (time
     // before the bind) are absorbed, while a genuinely new failure fires
     // immediately even inside the settle window.
-    const mark = latestError(snapshot.nodes)
-    if (snapshot.nodes.length !== this.lastNodeCount) {
-      this.lastNodeCount = snapshot.nodes.length
-      const tail = snapshot.nodes.slice(-4).map(node => ({
+    const mark = latestError(live.nodes)
+    if (live.nodes.length !== this.lastNodeCount) {
+      this.lastNodeCount = live.nodes.length
+      const tail = live.nodes.slice(-4).map(node => ({
         kind: node.kind,
         seq: node.seq,
         time: node.time,
         isError: node.isError,
         exitCode: node.resultView?.exitCode,
       }))
-      console.debug('[ui-whale-pet] conversation nodes ->', snapshot.nodes.length, JSON.stringify(tail))
+      console.debug('[ui-whale-pet] conversation nodes ->', live.nodes.length, JSON.stringify(tail))
     }
     if (mark !== null && mark.seq > this.lastErrorSeq) {
       const fresh = isFreshError(mark, this.boundAt, now)
@@ -464,12 +575,12 @@ export class SessionWhaleObserver {
 
     // Turn boundaries: intermediate tool failures are useful while work is in
     // flight, but a later successful completion supersedes those recaps.
-    if (this.wasRunning && !snapshot.running) {
-      const terminalError = mark?.kind === 'turn-error' || snapshot.lastAgentError != null
+    if (this.wasRunning && !live.running) {
+      const terminalError = mark?.kind === 'turn-error' || live.lastAgentError != null
       if (!terminalError) this.service.discardRecaps(this.turnErrorRecapIds)
       this.turnErrorRecapIds.clear()
     }
-    if (shouldCelebrateCompletedTurn(this.wasRunning, snapshot.running, this.turnStartedAt, now, this.transient)) {
+    if (shouldCelebrateCompletedTurn(this.wasRunning, live.running, this.turnStartedAt, now, this.transient)) {
       this.celebrate(now)
       this.service.pushRecap('长回合完成 🎉')
     }
@@ -492,7 +603,7 @@ export class SessionWhaleObserver {
     }
     if (planActive !== undefined) this.knownPlanActive = planActive
 
-    this.wasRunning = snapshot.running
+    this.wasRunning = live.running
 
     // External interactions (e.g. chat thinking) win over every
     // session-derived state until they expire.
@@ -511,7 +622,7 @@ export class SessionWhaleObserver {
       this.transient = null
     }
 
-    const pending = readPendingInteraction(sessions, this.sessionId)
+    const pending = readPendingInteraction(this.ctx, sessions, this.sessionId)
     if (pending !== undefined) this.lastActivityAt = now
     if (pending !== this.lastPending) {
       if (pending !== undefined) this.service.pushRecap(pendingInteractionToText(pending))
@@ -520,7 +631,7 @@ export class SessionWhaleObserver {
 
     const mood = deriveWhaleActivity(now, {
       active,
-      running: snapshot.running,
+      running: live.running,
       turnStartedAt: this.turnStartedAt,
       lastActivityAt: this.lastActivityAt,
       userTyping: this.userTyping,
@@ -537,7 +648,7 @@ export class SessionWhaleObserver {
       this.service.playEffect('bubble')
     }
 
-    this.maybeNudge(now, snapshot.nodes, mood.mood)
+    this.maybeNudge(now, live.nodes, mood.mood)
     this.applyActivity(mood)
   }
 
@@ -595,10 +706,23 @@ function latestCompaction(nodes: readonly ConversationNodeLike[]): { seq: number
 }
 
 function readPendingInteraction(
+  ctx: WhaleSessionClientContext,
   sessions: SessionsLike,
   sessionId: string | undefined,
 ): WhalePendingInteraction | undefined {
   if (sessionId === undefined) return undefined
+
+  // Current DSH publishes pending interactions through uiSession instead of
+  // the old session-list row field.
+  try {
+    const pending = ctx.uiSession?.pendingInteractions?.getSnapshot().get(sessionId)
+    if (pending?.kind === 'approval' || pending?.kind === 'plan-review' || pending?.kind === 'question') {
+      return pending.kind
+    }
+  } catch {
+    // Fall through to the legacy list field.
+  }
+
   let list: SessionListLike
   try {
     list = sessions.list.getSnapshot()

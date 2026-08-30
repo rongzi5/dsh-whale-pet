@@ -23,11 +23,12 @@ interface SessionListLike {
 }
 interface ConversationLike {
     running: boolean;
-    partial: {
+    /** Old client runtimes kept the assembled conversation on the session face. */
+    partial?: {
         blocks: readonly unknown[];
     } | null;
-    runningCalls: readonly unknown[];
-    nodes: readonly ConversationNodeLike[];
+    runningCalls?: readonly unknown[];
+    nodes?: readonly ConversationNodeLike[];
     lastAgentError?: string | null;
 }
 interface ConversationNodeLike {
@@ -54,8 +55,21 @@ interface SessionsLike {
     list: ObservableLike<SessionListLike>;
     binding(id: string): SessionBindingLike | undefined;
 }
+interface ConversationBindingLike {
+    target(target: string): ObservableLike<unknown> | undefined;
+}
+interface UiConversationLike {
+    binding(id: string): ConversationBindingLike | undefined;
+}
+interface UiSessionLike {
+    pendingInteractions?: ObservableLike<ReadonlyMap<string, {
+        kind?: string;
+    }>>;
+}
 export interface WhaleSessionClientContext {
     sessions?: SessionsLike;
+    uiConversation?: UiConversationLike;
+    uiSession?: UiSessionLike;
 }
 /**
  * Pure mood derivation, separated for tests.
@@ -80,6 +94,7 @@ export declare class SessionWhaleObserver {
     private session;
     private goalFace;
     private planFace;
+    private chatTarget;
     private wasRunning;
     private turnStartedAt;
     private lastActivityAt;
@@ -114,6 +129,7 @@ export declare class SessionWhaleObserver {
      * the session.
      */
     getProgress(): WhaleSessionProgress | null;
+    private currentChatTarget;
     /**
      * Track whether the user is composing a reply. Driven by DOM focus events
      * on the chat input from the view; while typing, the pet stays in the

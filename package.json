@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-whale-pet",
   "description": "Frame-wide 3D whale desktop pet with edge habitat, hover reactions, and smooth shape-aware dragging",
-  "version": "0.2.0-rc.1",
+  "version": "0.2.0-rc.2",
   "publishConfig": {
     "access": "public"
   },

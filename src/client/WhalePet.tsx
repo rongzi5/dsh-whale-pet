@@ -46,6 +46,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const shadowRef = useRef<HTMLSpanElement | null>(null)
   const chatBoxRef = useRef<HTMLDivElement | null>(null)
   const memoryBoxRef = useRef<HTMLDivElement | null>(null)
+  const nameBoxRef = useRef<HTMLDivElement | null>(null)
   const lastContextMenuAt = useRef(0)
   const [error, setError] = useState('')
   const [menu, setMenu] = useState<WhaleMenuState | null>(null)
@@ -54,6 +55,8 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const [memoryBox, setMemoryBox] = useState<WhaleMenuState | null>(null)
   const [memoryFacts, setMemoryFacts] = useState<string[]>([])
   const [memoryDraft, setMemoryDraft] = useState('')
+  const [nameBox, setNameBox] = useState<WhaleMenuState | null>(null)
+  const [nameDraft, setNameDraft] = useState('')
   const [catalog, setCatalog] = useState<WhaleModelCatalog | null>(null)
   const [catalogError, setCatalogError] = useState('')
   const [modelKey, setModelKey] = useState('')
@@ -147,6 +150,30 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
       document.removeEventListener('keydown', onKey)
     }
   }, [memoryBox])
+
+  // The naming panel closes on outside presses or Escape, mirroring the other
+  // inline panels (mousedown, so the opening menu-item click never closes it).
+  //
+  // This panel exists because `window.prompt` is not implemented by Electron:
+  // the desktop shell logs "prompt() is and will not be supported" and never
+  // shows a dialog, which made the "命名…" menu entry look dead.
+  useEffect(() => {
+    if (nameBox === null) return
+    const close = (event: MouseEvent): void => {
+      const target = event.target
+      if (target instanceof Node && nameBoxRef.current !== null && nameBoxRef.current.contains(target)) return
+      setNameBox(null)
+    }
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape') setNameBox(null)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [nameBox])
 
   // Load the model catalog (and the persisted selection) when the bubble opens.
   useEffect(() => {
@@ -280,14 +307,27 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     })
   }
 
+  // Open the inline naming panel. `window.prompt` is unavailable in the
+  // Electron desktop shell, so the rename flow owns its own input.
   const rename = (): void => {
-    const next = window.prompt('给鲸鲸起个新名字：', snapshot.name)
-    if (next !== null) whalePet.setName(next)
+    if (menu === null) return
+    setChatBox(null)
+    setMemoryBox(null)
+    setNameDraft(snapshot.name)
+    setNameBox({ x: menu.x, y: menu.y })
+  }
+
+  const confirmRename = (): void => {
+    if (nameBox === null) return
+    const next = nameDraft.trim()
+    if (next !== '') whalePet.setName(next)
+    setNameBox(null)
   }
 
   const chat = (): void => {
     if (whalePetChat === undefined || menu === null) return
     setMemoryBox(null)
+    setNameBox(null)
     setChatBox({ x: menu.x, y: menu.y })
     setChatText('')
     setCatalogError('')
@@ -296,6 +336,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const openMemory = (): void => {
     if (menu === null) return
     setChatBox(null)
+    setNameBox(null)
     setMemoryBox({ x: menu.x, y: menu.y })
     setMemoryFacts(loadWhaleMemory(browserStorage()).facts)
     setMemoryDraft('')
@@ -569,6 +610,41 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
               onClick={remember}
             >
               记住
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {nameBox !== null ? (
+        <div
+          ref={nameBoxRef}
+          className={styles.nameBox}
+          style={{ left: nameBox.x, top: nameBox.y }}
+          role="dialog"
+          aria-label="给鲸鲸命名"
+          data-whale-name="open"
+        >
+          <div className={styles.nameTitle}>给鲸鲸起个新名字</div>
+          <div className={styles.nameRow}>
+            <input
+              className={styles.nameInput}
+              value={nameDraft}
+              autoFocus
+              maxLength={32}
+              placeholder="新的名字…"
+              aria-label="鲸鲸的名字"
+              onChange={event => setNameDraft(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') confirmRename()
+                if (event.key === 'Escape') setNameBox(null)
+              }}
+            />
+            <button
+              type="button"
+              className={styles.nameConfirm}
+              disabled={nameDraft.trim() === ''}
+              onClick={confirmRename}
+            >
+              确定
             </button>
           </div>
         </div>

@@ -266,3 +266,96 @@ describe('ui-whale-pet chat bubble', () => {
     service.dispose()
   })
 })
+
+describe('ui-whale-pet naming panel', () => {
+  it('renames through an inline input instead of window.prompt (Electron has no prompt)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // The Electron desktop shell never implements window.prompt, so the rename
+    // flow must not depend on it: calling it there silently does nothing.
+    const promptSpy = vi.fn(() => '不应该被调用')
+    vi.stubGlobal('prompt', promptSpy)
+
+    const service = new WhalePetService()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root: Root = createRoot(host)
+    root.render(React.createElement(WhalePet, { whalePet: service }))
+    await new Promise<void>(resolve => setTimeout(resolve, 30))
+
+    host.querySelector('button[aria-label="DeepSeek 3D whale pet"]')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 90 }))
+    await new Promise<void>(resolve => setTimeout(resolve, 10))
+    const renameButton = [...host.querySelectorAll('button')].find(button => button.textContent === '命名…')
+    expect(renameButton).not.toBeNull()
+    renameButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+
+    const input = host.querySelector('input[placeholder="新的名字…"]') as HTMLInputElement | null
+    expect(input).not.toBeNull()
+    expect(input?.value).toBe(service.getSnapshot().name)
+
+    // The panel survives the click that opened it (its closer listens to mousedown).
+    document.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 10))
+    expect(host.querySelector('input[placeholder="新的名字…"]')).not.toBeNull()
+
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+    setter?.call(input, '  小虎鲸  ')
+    input?.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 10))
+    input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+
+    expect(service.getSnapshot().name).toBe('小虎鲸')
+    expect(host.querySelector('input[placeholder="新的名字…"]')).toBeNull()
+    expect(promptSpy).not.toHaveBeenCalled()
+
+    root.unmount()
+    host.remove()
+    service.dispose()
+    vi.unstubAllGlobals()
+  })
+
+  it('closes the naming panel on Escape without renaming', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const service = new WhalePetService()
+    const before = service.getSnapshot().name
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root: Root = createRoot(host)
+    root.render(React.createElement(WhalePet, { whalePet: service }))
+    await new Promise<void>(resolve => setTimeout(resolve, 30))
+
+    const openMenu = (): void => {
+      host.querySelector('button[aria-label="DeepSeek 3D whale pet"]')
+        ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 90 }))
+    }
+    openMenu()
+    await new Promise<void>(resolve => setTimeout(resolve, 10))
+    ;[...host.querySelectorAll('button')].find(button => button.textContent === '命名…')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(host.querySelector('input[placeholder="新的名字…"]')).not.toBeNull()
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(host.querySelector('input[placeholder="新的名字…"]')).toBeNull()
+    expect(service.getSnapshot().name).toBe(before)
+
+    // Reopen and close by pressing outside the panel.
+    openMenu()
+    await new Promise<void>(resolve => setTimeout(resolve, 10))
+    ;[...host.querySelectorAll('button')].find(button => button.textContent === '命名…')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(host.querySelector('input[placeholder="新的名字…"]')).not.toBeNull()
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(host.querySelector('input[placeholder="新的名字…"]')).toBeNull()
+    expect(service.getSnapshot().name).toBe(before)
+
+    root.unmount()
+    host.remove()
+    service.dispose()
+  })
+})

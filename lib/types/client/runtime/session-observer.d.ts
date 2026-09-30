@@ -15,9 +15,14 @@ export interface ObservableLike<T> {
     subscribe(listener: () => void): () => void;
 }
 interface SessionSummaryLike {
+    id?: string;
+    retainedBy?: {
+        mainView?: number;
+    };
     pendingInteraction?: WhalePendingInteraction;
 }
 interface SessionListLike {
+    ids?: readonly string[];
     current?: string;
     byId?: Record<string, SessionSummaryLike>;
 }
@@ -62,8 +67,15 @@ interface UiConversationLike {
     binding(id: string): ConversationBindingLike | undefined;
 }
 interface UiSessionLike {
-    pendingInteractions?: ObservableLike<ReadonlyMap<string, {
-        kind?: string;
+    adapter?: {
+        current: ObservableLike<{
+            key?: string | undefined;
+        }>;
+    };
+    sessionStatus?: ObservableLike<ReadonlyMap<string, {
+        pendingInteraction?: {
+            kind?: string;
+        };
     }>>;
 }
 export interface WhaleSessionClientContext {
@@ -87,6 +99,7 @@ export declare class SessionWhaleObserver {
     private readonly ctx;
     private readonly service;
     private listDispose;
+    private selectionDispose;
     private sessionDispose;
     private timer;
     private sessions;

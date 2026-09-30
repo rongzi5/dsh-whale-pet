@@ -12,7 +12,8 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { SessionId, type SessionEvent, type SessionStore } from '@deepseek-ai/dsh-session'
-import type { JobRegistry, JobSnapshot } from '@deepseek-ai/dsh-jobs'
+import type { SessionQueryEngine } from '@deepseek-ai/dsh-session-query'
+import type { JobId, JobRegistry, JobView } from '@deepseek-ai/dsh-jobs'
 
 /** Extracted plain text from message content blocks. */
 function textOf(blocks: ReadonlyArray<{ type?: string; text?: unknown }> | undefined): string {
@@ -56,8 +57,8 @@ const JOB_OUTPUT_TAIL_LIMIT = 120
  * skipped.
  */
 export function summarizeJobs(
-  snapshots: readonly JobSnapshot[],
-  readOutput: (id: JobSnapshot['id']) => string | undefined,
+  snapshots: readonly JobView[],
+  readOutput: (id: JobId) => string | undefined,
   limit = 5,
 ): SessionProgressJobsEntry[] {
   const entries: SessionProgressJobsEntry[] = []
@@ -118,8 +119,8 @@ export function summarizeSession(events: readonly SessionEvent[], now: number): 
         break
       }
       case 'tool/result': {
-        const resultBlock = event.data.message.content[0]
-        const callId = resultBlock?.toolCallId
+        const resultMessage = event.data.message
+        const callId = resultMessage.toolCallId
         if (callId !== undefined) {
           const call = openCalls.get(callId)
           if (call !== undefined) {
@@ -128,9 +129,8 @@ export function summarizeSession(events: readonly SessionEvent[], now: number): 
           }
         }
         lastResult = {
-          // The text lives inside the tool-result block, not at the top level.
-          text: textOf(resultBlock?.content),
-          isError: event.data.error !== undefined || resultBlock?.isError === true,
+          text: textOf(resultMessage.content),
+          isError: event.data.error !== undefined || resultMessage.isError === true,
           seq: event.seq,
         }
         nodeCount += 1
@@ -193,6 +193,7 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
 /** HTTP handler for `GET /api/whale-pet/progress?session=<id>`. */
 export function createProgressHandler(
   store: SessionStore | null,
+  sessionQuery: SessionQueryEngine | null,
   jobs: JobRegistry | null = null,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res): Promise<void> => {
@@ -205,7 +206,7 @@ export function createProgressHandler(
       sendJson(res, 405, { error: 'method not allowed' })
       return
     }
-    if (store === null) {
+    if (store === null || sessionQuery === null) {
       sendJson(res, 503, { error: 'session store unavailable' })
       return
     }
@@ -214,17 +215,29 @@ export function createProgressHandler(
       sendJson(res, 400, { error: 'missing session id' })
       return
     }
-    const session = store.get(SessionId(rawId))
+    const sessionId = SessionId(rawId)
+    const session = store.get(sessionId)
     if (session === undefined) {
       sendJson(res, 404, { error: 'session not found' })
       return
     }
-    const summary = summarizeSession(session.events, Date.now())
+    const observation = await sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+    let summary: SessionProgressSummary
+    try {
+      summary = summarizeSession(observation.events, Date.now())
+    } finally {
+      observation[Symbol.dispose]()
+    }
     // Probe the jobs registry for running background tasks (real state +
     // output tail) — the "主动探寻" part of a progress question.
     if (jobs !== null) {
       try {
-        const runningJobs = summarizeJobs(jobs.list(), id => jobs.read(id).text)
+        const caller = SessionId(rawId)
+        const runningJobs = summarizeJobs(jobs.list(caller), id => {
+          const job = jobs.get(id, caller)
+          const from = Math.max(job.output.earliest, job.output.total - JOB_OUTPUT_TAIL_LIMIT)
+          return jobs.readAt(id, from, caller).chunks.map(chunk => chunk.text).join('')
+        })
         if (runningJobs.length > 0) summary.jobs = runningJobs
       } catch {
         // Jobs registry unavailable; the event-log summary still stands.

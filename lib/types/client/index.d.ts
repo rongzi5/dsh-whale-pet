@@ -1,5 +1,5 @@
 /** Persistent browser plugin for the frame-wide 3D whale pet. */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
 declare module "@deepseek-ai/dsh-client-ui-slots" {
     interface SlotMap {
         "shell.overlay": {
@@ -16,7 +16,7 @@ export { WhalePetChat } from './runtime/whale-pet-chat.ts';
 export { loadWhalePetState, saveWhalePetState, WHALE_PET_DEFAULTS, type WhalePetPersistedState } from './persistence.ts';
 export type { WhaleActivity, WhaleEffect, WhaleEffectKind, WhaleMood, WhaleRecap } from './activity.ts';
 export type { WhaleExternalState, WhaleScene } from './whale/scene.ts';
-/** Required services: slot registry plus the sessions bridge. */
+/** Required services: slot registry plus Session and Conversation state bridges. */
 export declare const inject: string[];
 /** Mount the runtime service and register one additive shell-overlay entry. */
 export declare function apply(ctx: ClientContext): void;

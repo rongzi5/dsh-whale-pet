@@ -126,9 +126,21 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
 
 ## 安装
 
+### DeepSeek Harness 桌面版（0.2.0-rc.2）
+
+桌面版自行管理保留的 `desktop` profile，因此应从应用内的 Plugins 页面安装，不要使用普通 `dsh plugin` CLI。先构建并打包插件：
+
+```sh
+npm install
+npm run build
+npm pack
+```
+
+然后在 DeepSeek Harness 桌面版打开 Plugins 页面，选择安装 Bundle，并粘贴生成的 `.tgz` 文件完整路径。确认安装后，按提示重启桌面版。包内的 bundle patch 会让管理器同时启用 Host 和浏览器端入口。不要对该 profile 运行 `install-profile.mjs`，也不要通过普通 CLI 修改它。
+
 ### 即插即用（推荐）
 
-仓库自带预构建产物（`lib/`），下载后无需 pnpm workspace 和构建步骤。运行 `dsh` 的机器需要 Node.js 22 或更高版本。
+普通 CLI/Web profile 可使用仓库预构建产物（`lib/`）。旧安装脚本需要运行 `dsh` 的机器装有 Node.js 22 或更高版本；桌面版请用上方受支持的插件管理流程。
 
 1. 下载仓库（GitHub ZIP 或 `git clone`）。
 2. 运行 profile 安装脚本：
@@ -141,7 +153,7 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
    写入 profile 清单并创建 node_modules 链接，同时把
    `ui-whale-pet` Cordis 条目追加到 `$DSH_HOME/profiles/web/cordis.patch.yml`。
 
-   如需安装到其他 profile，把 `web` 换成对应名称即可。
+   此脚本仅用于 Node CLI/Web profile；不要用它安装到桌面版 profile。
 3. 配置聊天代理的 API Key（见「LLM 聊天与记忆」），否则聊天会提示未配置。
 4. 重启 `dsh web`，并强制刷新浏览器。
 

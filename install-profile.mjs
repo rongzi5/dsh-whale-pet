@@ -9,6 +9,9 @@
  *
  * Usage:
  *   node install-profile.mjs [profile]     # default profile: web
+ *
+ * The packaged DeepSeek Harness Desktop profile is manager-owned; use its
+ * `dsh plugin --profile desktop add <package-or-tarball>` command instead.
  */
 
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -27,6 +30,10 @@ function fail(message) {
   process.exit(1)
 }
 
+if (profileName === 'desktop') {
+  fail(`the Desktop profile is managed by DeepSeek Harness; install with its bundled command: dsh plugin --profile desktop add <package-or-tarball>`)
+}
+
 for (const file of ['package.json', 'lib/index.js', 'lib/client.js']) {
   if (!existsSync(join(repoRoot, file))) fail(`prebuilt artifact missing: ${file}; rebuild from source first`)
 }
@@ -40,7 +47,7 @@ console.log(`install-profile: installing ${pluginId} into ${profileDir}`)
 // 1. Copy the runnable package (package.json, lib/, docs, license).
 rmSync(pluginDir, { recursive: true, force: true })
 mkdirSync(pluginDir, { recursive: true })
-for (const entry of ['package.json', 'lib', 'LICENSE', 'README.md', 'README.zh.md']) {
+for (const entry of ['package.json', 'cordis.patch.yml', 'lib', 'LICENSE', 'README.md', 'README.zh.md']) {
   const source = join(repoRoot, entry)
   if (existsSync(source)) cpSync(source, join(pluginDir, entry), { recursive: true })
 }

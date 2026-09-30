@@ -17,8 +17,9 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Agent, AgentRegistry } from '@deepseek-ai/dsh-agent'
-import type { AgentPresets } from '@deepseek-ai/dsh-agent-presets'
+import type { AgentPresetRegistry } from '@deepseek-ai/dsh-agent-preset-registry'
 import { SessionId, type SessionEvent, type SessionStore } from '@deepseek-ai/dsh-session'
+import type { SessionQueryEngine } from '@deepseek-ai/dsh-session-query'
 
 /** How long a pet-dispatched task may run before reporting "still running". */
 export const TASK_TIMEOUT_MS = 60_000
@@ -120,8 +121,9 @@ function finalAssistantText(events: readonly SessionEvent[]): string {
  */
 export function createTaskHandler(
   agents: AgentRegistry,
-  agentPresets: AgentPresets | null,
+  agentPresets: AgentPresetRegistry | null,
   sessions: SessionStore | null,
+  sessionQuery: SessionQueryEngine | null,
   workspaceRoot: () => string | undefined,
   defaultPreset: () => string | undefined = () => undefined,
   defaultModel: () => { provider?: string; model?: string } | undefined = () => undefined,
@@ -135,6 +137,10 @@ export function createTaskHandler(
     }
     if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
       sendJson(res, 405, { error: 'method not allowed' })
+      return
+    }
+    if (sessionQuery === null) {
+      sendJson(res, 503, { error: 'session query service unavailable' })
       return
     }
     const body = await readJsonBody(req)
@@ -215,33 +221,38 @@ export function createTaskHandler(
       } catch (error) {
         stopReason = error instanceof Error ? error.message : String(error)
       }
-      const events = child.session.events
-      const reason = turnEndReasonOf(events)
-      const reasonKind = typeof reason === 'object' && reason !== null && (reason as { kind?: unknown }).kind === 'error' ? 'error' : 'completed'
-      let output = finalAssistantText(events).slice(0, TASK_OUTPUT_LIMIT)
-      if (output === '' && reasonKind === 'error') {
-        // Surface the failure detail instead of an empty bubble.
-        const failure = (reason as { error?: { message?: string; code?: string } } | undefined)?.error
-        output = failure !== undefined
-          ? `子代理回合出错：${failure.code ?? ''} ${failure.message ?? ''}`.trim().slice(0, 300)
-          : '子代理回合出错'
-      } else if (output === '' && timedOut) {
-        output = '任务仍在进行中，可打开会话查看进度'
+      const observation = await sessionQuery.observeSession(child.session.id, { projectionMode: 'none' })
+      try {
+        const events = observation.events
+        const reason = turnEndReasonOf(events)
+        const reasonKind = typeof reason === 'object' && reason !== null && (reason as { kind?: unknown }).kind === 'error' ? 'error' : 'completed'
+        let output = finalAssistantText(events).slice(0, TASK_OUTPUT_LIMIT)
+        if (output === '' && reasonKind === 'error') {
+          // Surface the failure detail instead of an empty bubble.
+          const failure = (reason as { error?: { message?: string; code?: string } } | undefined)?.error
+          output = failure !== undefined
+            ? `子代理回合出错：${failure.code ?? ''} ${failure.message ?? ''}`.trim().slice(0, 300)
+            : '子代理回合出错'
+        } else if (output === '' && timedOut) {
+          output = '任务仍在进行中，可打开会话查看进度'
+        }
+        const response: TaskResponse = {
+          output,
+          sessionId: child.session.id,
+          completed: reasonKind === 'completed' && output !== '' && !timedOut,
+          debug: {
+            stopReason,
+            eventCount: events.length,
+            eventTypes: [...new Set(events.map(event => event.type))],
+            turnEndReason: reason,
+            presetMounted,
+            ...(presetMountError !== undefined ? { presetMountError } : {}),
+          },
+        }
+        sendJson(res, 200, response)
+      } finally {
+        observation[Symbol.dispose]()
       }
-      const response: TaskResponse = {
-        output,
-        sessionId: child.session.id,
-        completed: reasonKind === 'completed' && output !== '' && !timedOut,
-        debug: {
-          stopReason,
-          eventCount: events.length,
-          eventTypes: [...new Set(events.map(event => event.type))],
-          turnEndReason: reason,
-          presetMounted,
-          ...(presetMountError !== undefined ? { presetMountError } : {}),
-        },
-      }
-      sendJson(res, 200, response)
     } catch (error) {
       sendJson(res, 502, { error: error instanceof Error ? error.message.slice(0, 300) : String(error) })
     }

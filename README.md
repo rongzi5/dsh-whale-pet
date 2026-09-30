@@ -158,11 +158,29 @@ Debug attributes on the pet element:
 
 ## Installation
 
+### DeepSeek Harness Desktop (0.2.0-rc.2)
+
+Desktop owns the reserved `desktop` profile, so install this bundle from the
+application's Plugins page rather than the ordinary `dsh plugin` CLI. Build and
+pack the plugin first:
+
+```sh
+npm install
+npm run build
+npm pack
+```
+
+In DeepSeek Harness Desktop, open the Plugins page, choose to install a bundle,
+and paste the full path to the generated `.tgz` file. Confirm the install, then
+restart Desktop if prompted. The package ships a bundle patch, so the manager
+activates its Host and browser entries together. Do not use
+`install-profile.mjs desktop` or run the regular CLI against that profile.
+
 ### Plug-and-play (prebuilt, recommended)
 
-The repository ships prebuilt runtime artifacts in `lib/`, so a downloaded
-copy needs no pnpm workspace and no build step. Requires Node.js 22+ on the
-machine running `dsh`.
+For a regular CLI/Web profile, the repository ships prebuilt runtime artifacts
+in `lib/`. This legacy installer requires Node.js 22+ on the machine running
+`dsh` and is not the supported path for the packaged Desktop profile.
 
 1. Download the repository (GitHub ZIP or `git clone`).
 2. Run the profile installer:
@@ -175,7 +193,7 @@ machine running `dsh`.
    adds it to the profile manifest and node_modules, and appends the
    `ui-whale-pet` Cordis row to `$DSH_HOME/profiles/web/cordis.patch.yml`.
 
-   Use another profile name as the argument to install there.
+   This helper is for Node-based CLI/Web profiles only; do not target Desktop.
 3. Configure the chat proxy API key (see [LLM chat and memory](#llm-chat-and-memory))
    or the pet chat reports an unconfigured error.
 4. Restart `dsh web` and hard-refresh the browser.

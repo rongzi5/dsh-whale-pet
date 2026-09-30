@@ -13,8 +13,9 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent';
-import type { AgentPresets } from '@deepseek-ai/dsh-agent-presets';
+import type { AgentPresetRegistry } from '@deepseek-ai/dsh-agent-preset-registry';
 import { type SessionStore } from '@deepseek-ai/dsh-session';
+import type { SessionQueryEngine } from '@deepseek-ai/dsh-session-query';
 /** How long a pet-dispatched task may run before reporting "still running". */
 export declare const TASK_TIMEOUT_MS = 60000;
 /** Final-output text cap returned to the pet bubble. */
@@ -46,7 +47,7 @@ export declare const TASK_MAX_BODY_BYTES: number;
  * user message, and awaited until idle. The child session is deliberately
  * NOT disposed so it stays in the workspace session list.
  */
-export declare function createTaskHandler(agents: AgentRegistry, agentPresets: AgentPresets | null, sessions: SessionStore | null, workspaceRoot: () => string | undefined, defaultPreset?: () => string | undefined, defaultModel?: () => {
+export declare function createTaskHandler(agents: AgentRegistry, agentPresets: AgentPresetRegistry | null, sessions: SessionStore | null, sessionQuery: SessionQueryEngine | null, workspaceRoot: () => string | undefined, defaultPreset?: () => string | undefined, defaultModel?: () => {
     provider?: string;
     model?: string;
 } | undefined, timeoutMs?: number): (req: IncomingMessage, res: ServerResponse) => Promise<void>;

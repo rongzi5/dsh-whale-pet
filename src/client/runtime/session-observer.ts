@@ -27,10 +27,13 @@ export interface ObservableLike<T> {
 }
 
 interface SessionSummaryLike {
+  id?: string
+  retainedBy?: { mainView?: number }
   pendingInteraction?: WhalePendingInteraction
 }
 
 interface SessionListLike {
+  ids?: readonly string[]
   current?: string
   byId?: Record<string, SessionSummaryLike>
 }
@@ -92,7 +95,8 @@ interface UiConversationLike {
 }
 
 interface UiSessionLike {
-  pendingInteractions?: ObservableLike<ReadonlyMap<string, { kind?: string }>>
+  adapter?: { current: ObservableLike<{ key?: string | undefined }> }
+  sessionStatus?: ObservableLike<ReadonlyMap<string, { pendingInteraction?: { kind?: string } }>>
 }
 
 export interface WhaleSessionClientContext {
@@ -305,6 +309,7 @@ export function deriveWhaleActivity(
 
 export class SessionWhaleObserver {
   private listDispose: (() => void) | null = null
+  private selectionDispose: (() => void) | null = null
   private sessionDispose: (() => void) | null = null
   private timer: ReturnType<typeof setInterval> | null = null
   private sessions: SessionsLike | null = null
@@ -358,6 +363,8 @@ export class SessionWhaleObserver {
     this.disposed = true
     this.listDispose?.()
     this.listDispose = null
+    this.selectionDispose?.()
+    this.selectionDispose = null
     this.sessionDispose?.()
     this.sessionDispose = null
     if (this.timer !== null) clearInterval(this.timer)
@@ -384,7 +391,7 @@ export class SessionWhaleObserver {
     if (this.sessions === null || this.session === null || this.sessionId === undefined) return null
     let current: string | undefined
     try {
-      current = this.sessions.list.getSnapshot().current
+      current = selectedSessionId(this.ctx, this.sessions)
     } catch {
       return null
     }
@@ -462,12 +469,17 @@ export class SessionWhaleObserver {
     this.listDispose = sessions.list.subscribe(() => {
       this.rebind(sessions)
     })
+    try {
+      this.selectionDispose = this.ctx.uiSession?.adapter?.current.subscribe(() => this.rebind(sessions)) ?? null
+    } catch {
+      this.selectionDispose = null
+    }
     this.rebind(sessions)
   }
 
   private rebind(sessions: SessionsLike): void {
     if (this.disposed) return
-    const current = sessions.list.getSnapshot().current
+    const current = selectedSessionId(this.ctx, sessions)
     if (current !== this.sessionId) {
       this.sessionId = current
       this.sessionDispose?.()
@@ -522,7 +534,7 @@ export class SessionWhaleObserver {
 
   private sample(sessions: SessionsLike): void {
     if (this.disposed) return
-    const current = sessions.list.getSnapshot().current
+    const current = selectedSessionId(this.ctx, sessions)
     if (current !== this.sessionId) {
       this.rebind(sessions)
       return
@@ -712,12 +724,11 @@ function readPendingInteraction(
 ): WhalePendingInteraction | undefined {
   if (sessionId === undefined) return undefined
 
-  // Current DSH publishes pending interactions through uiSession instead of
-  // the old session-list row field.
+  // Current DSH publishes pending interactions in uiSession's status map.
   try {
-    const pending = ctx.uiSession?.pendingInteractions?.getSnapshot().get(sessionId)
-    if (pending?.kind === 'approval' || pending?.kind === 'plan-review' || pending?.kind === 'question') {
-      return pending.kind
+    const pending = ctx.uiSession?.sessionStatus?.getSnapshot().get(sessionId)?.pendingInteraction?.kind
+    if (pending === 'approval' || pending === 'plan-review' || pending === 'question') {
+      return pending
     }
   } catch {
     // Fall through to the legacy list field.
@@ -732,6 +743,23 @@ function readPendingInteraction(
   const pending = list.byId?.[sessionId]?.pendingInteraction
   if (pending === 'approval' || pending === 'plan-review' || pending === 'question') return pending
   return undefined
+}
+
+/** The active Session is identified by the Session Controller's main-view retain. */
+function selectedSessionId(ctx: WhaleSessionClientContext, sessions: SessionsLike): string | undefined {
+  try {
+    const current = ctx.uiSession?.adapter?.current.getSnapshot().key
+    if (typeof current === 'string') return current
+  } catch {
+    // Fall back to local retain counts when the view adapter is unavailable.
+  }
+  try {
+    const list = sessions.list.getSnapshot()
+    const selected = Object.values(list.byId ?? {}).find(row => (row.retainedBy?.mainView ?? 0) > 0)?.id
+    return selected ?? list.current
+  } catch {
+    return undefined
+  }
 }
 
 function safeProjection(session: SessionFaceLike, key: string): ObservableLike<unknown> | null {

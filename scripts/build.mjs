@@ -14,13 +14,14 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const BIN = join(ROOT, 'node_modules', '.bin')
+const TSC = join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc')
 const PACKAGE_ID = '@deepseek-ai/dsh-client-ui-whale-pet'
+const toBuildPath = path => relative(ROOT, path).replaceAll('\\', '/')
 
 function step(message) {
   console.log(`[build] ${message}`)
@@ -37,10 +38,10 @@ const cssModulePlugin = () => ({
   name: 'whale-css-modules',
   setup(build) {
     build.onResolve({ filter: /\.module\.css$/ }, (args) => {
-      return { path: resolve(args.resolveDir, args.path), namespace: 'whale-css' }
+      return { path: toBuildPath(resolve(args.resolveDir, args.path)), namespace: 'whale-css' }
     })
     build.onLoad({ filter: /.*/, namespace: 'whale-css' }, async (args) => {
-      const source = readFileSync(args.path, 'utf8')
+      const source = readFileSync(resolve(ROOT, args.path), 'utf8')
       const hash = createHash('md5').update(args.path).digest('hex').slice(0, 6)
       const prefix = `v${hash}`
       const classNames = [...new Set(source.match(/\.([a-zA-Z][\w-]*)/g)?.map(token => token.slice(1)) ?? [])]
@@ -66,7 +67,7 @@ const cssModulePlugin = () => ({
 
 // 1. Type declarations for the published `types` entry.
 step('tsc declaration-only → lib/types')
-execFileSync(join(BIN, 'tsc'), ['-p', 'tsconfig.json'], { cwd: ROOT, stdio: 'inherit' })
+execFileSync(process.execPath, [TSC, '-p', 'tsconfig.json'], { cwd: ROOT, stdio: 'inherit' })
 
 // 2. Host bundles: self-contained ESM (no external runtime imports).
 step('esbuild host entry → lib/index.js')

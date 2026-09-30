@@ -19,11 +19,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { SessionStore } from '@deepseek-ai/dsh-session'
+import type { SessionQueryEngine } from '@deepseek-ai/dsh-session-query'
 import type { JobRegistry } from '@deepseek-ai/dsh-jobs'
 import type { AgentRegistry } from '@deepseek-ai/dsh-agent'
-import type { AgentPresets } from '@deepseek-ai/dsh-agent-presets'
+import type { AgentPresetRegistry } from '@deepseek-ai/dsh-agent-preset-registry'
+import type { AgentDefaultModelConfig } from '@deepseek-ai/dsh-agent-default-model'
 import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
-import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { createChatProxyHandler, directBackend, resolveChatProxyConfig, type WhaleChatBackend } from './chat-proxy.ts'
 import { LlmBackend } from './llm-backend.ts'
@@ -47,7 +48,7 @@ export interface WhalePetHostConfig {
  * subagent machinery — cordis forbids accessing undeclared services from
  * plugin scope, so a try/catch alone silently degrades to the fallback.
  */
-export const inject = ['webServer', 'llm', 'credentials', 'sessions', 'jobs', 'agents', 'agentPresets', 'settings']
+export const inject = ['webServer', 'llm', 'credentials', 'sessions', 'sessionQuery', 'jobs', 'agents', 'agentPresets', 'agentDefaultModel']
 
 /** Read `ctx.credentials` defensively (declared via inject, still guarded). */
 function safeCredentials(ctx: Context): CredentialProvider | null {
@@ -76,6 +77,15 @@ function safeSessions(ctx: Context): SessionStore | null {
   }
 }
 
+/** Read `ctx.sessionQuery` (the live-preferred session observation service). */
+function safeSessionQuery(ctx: Context): SessionQueryEngine | null {
+  try {
+    return ctx.sessionQuery ?? null
+  } catch {
+    return null
+  }
+}
+
 /** Read `ctx.jobs` (the background job registry) defensively. */
 function safeJobs(ctx: Context): JobRegistry | null {
   try {
@@ -95,7 +105,7 @@ function safeAgents(ctx: Context): AgentRegistry | null {
 }
 
 /** Read `ctx.agentPresets` defensively. */
-function safeAgentPresets(ctx: Context): AgentPresets | null {
+function safeAgentPresets(ctx: Context): AgentPresetRegistry | null {
   try {
     return ctx.agentPresets ?? null
   } catch {
@@ -104,9 +114,9 @@ function safeAgentPresets(ctx: Context): AgentPresets | null {
 }
 
 /** Read `ctx.workspaceRegistry` defensively. */
-function safeSettings(ctx: Context): SettingsProvider | null {
+function safeAgentDefaultModel(ctx: Context): AgentDefaultModelConfig | null {
   try {
-    return ctx.settings ?? null
+    return ctx.agentDefaultModel ?? null
   } catch {
     return null
   }
@@ -148,11 +158,12 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
 
   const backend: WhaleChatBackend = llm !== null ? new LlmBackend(llm) : directBackend(resolveDirect)
   const sessions = safeSessions(ctx)
+  const sessionQuery = safeSessionQuery(ctx)
   const jobs = safeJobs(ctx)
   const agents = safeAgents(ctx)
   const agentPresets = safeAgentPresets(ctx)
+  const agentDefaultModel = safeAgentDefaultModel(ctx)
   const workspaces = safeWorkspaces(ctx)
-  const settings = safeSettings(ctx)
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
@@ -165,7 +176,7 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
     ctx.effect(() => ctx.webServer.register({
       kind: 'exact',
       path: '/api/whale-pet/progress',
-      handler: createProgressHandler(sessions, jobs),
+      handler: createProgressHandler(sessions, sessionQuery, jobs),
     }), 'ui-whale-pet: session progress')
   }
 
@@ -174,19 +185,16 @@ export function apply(ctx: Context, config?: WhalePetHostConfig): void {
     ctx.effect(() => ctx.webServer.register({
       kind: 'exact',
       path: '/api/whale-pet/task',
-      handler: createTaskHandler(agents, agentPresets, sessions, () => workspaces?.list()[0]?.path, () => {
-        if (settings === null) return undefined
+      handler: createTaskHandler(agents, agentPresets, sessions, sessionQuery, () => workspaces?.list()[0]?.path, () => {
         try {
-          const value = settings.get(settingsNamespace('agent-presets')) as { default?: unknown } | undefined
-          return typeof value?.default === 'string' ? value.default : undefined
+          return agentPresets?.defaultId
         } catch {
           return undefined
         }
       }, () => {
-        if (settings === null) return undefined
+        if (agentDefaultModel === null) return undefined
         try {
-          const value = settings.get(settingsNamespace('agent-default-model')) as { provider?: unknown; model?: unknown } | undefined
-          if (typeof value?.provider !== 'string' || typeof value?.model !== 'string') return undefined
+          const value = agentDefaultModel.currentSelection()
           return { provider: value.provider, model: value.model }
         } catch {
           return undefined

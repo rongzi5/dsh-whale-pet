@@ -1,6 +1,6 @@
 /** Persistent browser plugin for the frame-wide 3D whale pet. */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface SlotMap {
     "shell.overlay": { kind: "list"; scope: "root" }
@@ -8,6 +8,8 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
 }
 
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { WhalePet, type WhalePetProps } from './WhalePet.tsx'
 import { SessionWhaleObserver, type WhaleSessionClientContext } from './runtime/session-observer.ts'
 import { WhalePetService } from './runtime/whale-pet-service.ts'
@@ -23,8 +25,8 @@ export { loadWhalePetState, saveWhalePetState, WHALE_PET_DEFAULTS, type WhalePet
 export type { WhaleActivity, WhaleEffect, WhaleEffectKind, WhaleMood, WhaleRecap } from './activity.ts'
 export type { WhaleExternalState, WhaleScene } from './whale/scene.ts'
 
-/** Required services: slot registry plus the sessions bridge. */
-export const inject = ['slots', 'sessions']
+/** Required services: slot registry plus Session and Conversation state bridges. */
+export const inject = ['slots', 'sessions', 'uiConversation', 'uiSession']
 
 /** Mount the runtime service and register one additive shell-overlay entry. */
 export function apply(ctx: ClientContext): void {

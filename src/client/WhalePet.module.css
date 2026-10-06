@@ -573,6 +573,102 @@
   cursor: default;
 }
 
+/* Size panel: a render-only scale control (the motion path never changes). */
+.sizeBox {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 240px;
+  max-width: 300px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgb(77 107 254 / 28%);
+  background: rgb(255 255 255 / 97%);
+  box-shadow: 0 8px 24px rgb(18 27 62 / 18%);
+  pointer-events: auto;
+  animation: menu-pop 160ms ease-out;
+}
+
+.sizeTitle {
+  color: #23315e;
+  font: 700 12px/1.4 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.sizeRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sizeStep {
+  flex-shrink: 0;
+  width: 26px;
+  border: 1px solid rgb(77 107 254 / 28%);
+  border-radius: 7px;
+  padding: 4px 0;
+  background: rgb(77 107 254 / 10%);
+  color: #4d6bfe;
+  font: 700 13px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+
+.sizeStep:hover:not(:disabled),
+.sizeStep:focus-visible {
+  background: rgb(77 107 254 / 18%);
+}
+
+.sizeStep:focus-visible {
+  outline: 2px solid rgb(77 107 254 / 40%);
+  outline-offset: -1px;
+}
+
+.sizeStep:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sizeSlider {
+  flex: 1;
+  min-width: 0;
+  accent-color: #4d6bfe;
+  cursor: pointer;
+}
+
+.sizeSlider:focus-visible {
+  outline: 2px solid rgb(77 107 254 / 40%);
+  outline-offset: 2px;
+}
+
+.sizeValue {
+  flex-shrink: 0;
+  min-width: 40px;
+  color: #23315e;
+  font: 700 12px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  text-align: right;
+}
+
+.sizeReset {
+  border: 1px solid rgb(77 107 254 / 28%);
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: rgb(77 107 254 / 10%);
+  color: #4d6bfe;
+  font: 600 11px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+
+.sizeReset:hover:not(:disabled),
+.sizeReset:focus-visible {
+  background: rgb(77 107 254 / 18%);
+}
+
+.sizeReset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 @keyframes heart-rise {
   0% {
     opacity: 0;

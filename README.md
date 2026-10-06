@@ -24,11 +24,19 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
   Other hit zones do something else: **tail** a heart plus an immediate
   patrol, **dorsal** an immediate patrol, **fin** a bubble.
 - **Right-click menu** — chat with the pet (LLM, see below), inspect or
-  delete remembered facts ("鲸鲸记得什么…"), rename the pet, toggle corner
-  snapping, glide back to a corner, or hide it. The menu is
+  delete remembered facts ("鲸鲸记得什么…"), rename the pet, resize it, toggle
+  corner snapping, glide back to a corner, or hide it. The menu is
   keyboard-accessible (Enter/Space) and closes on outside click or Escape.
 - **Corner snapping** — real drags (beyond the click threshold) glide to the
   nearest corner on release; toggle it from the menu.
+- **Size** — the menu entry "调整大小…（100%）" opens an inline slider control
+  (50%–150%, 5% steps) with −/＋ step buttons and a reset to the authored size.
+  Size is **render-only**: it scales the pet box around its own anchor, so the
+  resting edge, patrol path, drag clamping and celebration ellipse are
+  identical at every size — enlarging the whale never changes where it goes.
+  The trade-off is deliberate: because the resting position is left untouched
+  too, above 100% the tail can poke past the viewport edge while the pet rests
+  against it, and below 100% the silhouette sits slightly inside the corner.
 - **Drag dizziness** — a forceful drag (at least 420px of pointer travel at an
   average 550px/s) or a prolonged drag (at least 4.5s with 24px of travel)
   leaves the whale dizzy for about 4s. It rolls belly-up, weakly wobbles, and
@@ -37,9 +45,9 @@ The plugin registers one additive `whale-pet` entry in `shell.overlay`. It rende
   recovers; holds without movement and cancelled gestures do not trigger it.
 - **`Ctrl`/`Cmd` + `Alt` + `W`** — toggle the pet's visibility from anywhere;
   the shortcut works even when the pet is hidden.
-- **Persistence** — the pet's name, position, hidden state and snap preference
-  survive reloads through `localStorage` (guarded against private mode), and
-  the recap tracks the days you have spent together.
+- **Persistence** — the pet's name, position, size, hidden state and snap
+  preference survive reloads through `localStorage` (guarded against private
+  mode), and the recap tracks the days you have spent together.
 
 ## LLM chat and memory
 
@@ -155,6 +163,7 @@ Debug attributes on the pet element:
 
 - `data-whale-activity` — current mood (`idle`, `thinking`, `working`, `focused`, `celebrating`, `error`, `dizzy`, `sleeping`, `listening`, `awaiting`)
 - `data-whale-bridge` — session bridge state (`off`, `waiting`, `bound`)
+- `data-whale-size` — current visible size as whole percent (`50`–`150`)
 
 ## Installation
 
@@ -205,7 +214,7 @@ The repository builds standalone (no pnpm workspace, no dsh checkout):
 ```sh
 npm install            # dev toolchain: typescript, esbuild, vitest, three…
 npm run build          # tsc declarations + esbuild host/client bundles → lib/
-npm test               # vitest suite (175 tests)
+npm test               # vitest suite (195 tests)
 node install-profile.mjs web
 ```
 
@@ -218,7 +227,7 @@ the client bundle keeps the DSH `__ModuleLoader__.load` browser format with
 
 - `src/client/activity.ts` — pure mood/effect vocabulary and the view snapshot type.
 - `src/client/motion.ts` — pure frame-rate-independent screen-space motion, including the celebration loop path and corner snapping.
-- `src/client/persistence.ts` — guarded `localStorage` state (name, position, hidden, snap preference, first-run date).
+- `src/client/persistence.ts` — guarded `localStorage` state (name, position, size, hidden, snap preference, first-run date).
 - `src/client/runtime/scheduler.ts` — the single `requestAnimationFrame` clock.
 - `src/client/runtime/whale-pet-controller.ts` — owns the DOM listeners, scheduler, and per-frame rendering; composes the Three.js scene from `src/client/whale`.
 - `src/client/runtime/whale-pet-service.ts` — observable runtime service (`ctx.whalePet`) with activity, transient effects, recap history and persisted state.

@@ -71,6 +71,7 @@ export declare class WhaleMotionController {
     private settlingToCorner;
     private settleTargetX;
     private settleTargetY;
+    private sizeScale;
     private nextLook;
     private lookTime;
     private nextPatrol;
@@ -92,6 +93,18 @@ export declare class WhaleMotionController {
     setSnapToCorner(enabled: boolean): void;
     /** Glide to the nearest corner now unless an interaction owns the pose. */
     snapToCornerNow(): void;
+    /**
+     * Set the visible size multiplier applied to the rendered pet box.
+     *
+     * Deliberately inert for the path: bounds, patrol targets, drag clamping,
+     * the celebration ellipse and every yaw/pitch/roll term are computed from
+     * the authored {@link PET_WIDTH}x{@link PET_HEIGHT} box, so the pet follows
+     * exactly the same trajectory at any size. The multiplier only rides in
+     * {@link WhaleMotionFrame.scale}, which the view composes *after* the
+     * translation and rotation; the scaled box therefore still pivots on the
+     * same anchor point and the path is unchanged.
+     */
+    setSizeScale(scale: number): void;
     /** Restore a persisted position, clamped to the current viewport. */
     restorePosition(x: number | null, y: number | null): void;
     /** Current pet top-left position (CSS pixels). */

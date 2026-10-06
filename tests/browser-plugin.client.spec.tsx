@@ -267,6 +267,132 @@ describe('ui-whale-pet chat bubble', () => {
   })
 })
 
+describe('ui-whale-pet size panel', () => {
+  const openSizePanel = async (host: HTMLElement): Promise<void> => {
+    host.querySelector('button[aria-label="DeepSeek 3D whale pet"]')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 90 }))
+    await new Promise<void>(resolve => setTimeout(resolve, 10))
+    const button = [...host.querySelectorAll('button')].find(node => node.textContent?.startsWith('调整大小'))
+    expect(button).toBeTruthy()
+    button?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+  }
+
+  it('resizes the pet from the context menu without touching its position', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const service = new WhalePetService()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root: Root = createRoot(host)
+    root.render(React.createElement(WhalePet, { whalePet: service }))
+    await new Promise<void>(resolve => setTimeout(resolve, 30))
+
+    // The menu entry advertises the current size.
+    host.querySelector('button[aria-label="DeepSeek 3D whale pet"]')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 90 }))
+    await new Promise<void>(resolve => setTimeout(resolve, 10))
+    const entry = [...host.querySelectorAll('button')].find(node => node.textContent?.startsWith('调整大小'))
+    expect(entry?.textContent).toContain('100%')
+    entry?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+
+    // The panel survives the click that opened it (its closer listens to mousedown).
+    const slider = host.querySelector('input[aria-label="鲸鲸大小"]') as HTMLInputElement | null
+    expect(slider).not.toBeNull()
+    expect(slider?.value).toBe('100')
+    document.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 10))
+    expect(host.querySelector('input[aria-label="鲸鲸大小"]')).not.toBeNull()
+
+    // Dragging the slider publishes the new size and keeps the pet in place.
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+    setter?.call(slider, '150')
+    slider?.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(service.getSnapshot().size).toBe(1.5)
+    expect(host.querySelector('[data-whale-size="150"]')).not.toBeNull()
+    expect(service.getSnapshot().recap).toBeNull()
+
+    // The step buttons clamp at the ends and the reset returns to 100%.
+    expect(([...host.querySelectorAll('button')].find(node => node.getAttribute('aria-label') === '放大鲸鲸') as HTMLButtonElement).disabled).toBe(true)
+    ;[...host.querySelectorAll('button')].find(node => node.getAttribute('aria-label') === '缩小鲸鲸')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(service.getSnapshot().size).toBe(1.45)
+
+    const reset = [...host.querySelectorAll('button')].find(node => node.textContent === '恢复默认大小（100%）')
+    reset?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(service.getSnapshot().size).toBe(1)
+
+    // Escape closes the panel.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(host.querySelector('input[aria-label="鲸鲸大小"]')).toBeNull()
+
+    root.unmount()
+    host.remove()
+    service.dispose()
+  })
+
+  it('keeps the size panel fully on screen when the menu opens at the right edge', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const service = new WhalePetService()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root: Root = createRoot(host)
+    root.render(React.createElement(WhalePet, { whalePet: service }))
+    await new Promise<void>(resolve => setTimeout(resolve, 30))
+
+    host.querySelector('button[aria-label="DeepSeek 3D whale pet"]')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: window.innerWidth - 10, clientY: 90 }))
+    await new Promise<void>(resolve => setTimeout(resolve, 10))
+    ;[...host.querySelectorAll('button')].find(node => node.textContent?.startsWith('调整大小'))
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+
+    const panel = host.querySelector('[data-whale-size-panel="open"]') as HTMLElement | null
+    expect(panel).not.toBeNull()
+    // The panel title is just the control name; the "size only, not the path"
+    // explanation lives in the README, not in the UI.
+    expect(panel?.textContent).toContain('鲸鲸大小')
+    expect(panel?.textContent).not.toContain('不改路线')
+    // The panel's CSS box is at least 240 content + 16 padding + 2 border
+    // wide; the open position must keep it inside the viewport instead of
+    // clipping the ＋ button and the percentage readout.
+    const left = Number.parseFloat(panel?.style.left ?? 'NaN')
+    expect(Number.isFinite(left)).toBe(true)
+    expect(left + 240 + 16 + 2).toBeLessThanOrEqual(window.innerWidth - 8)
+
+    root.unmount()
+    host.remove()
+    service.dispose()
+  })
+
+  it('closes the size panel on an outside press', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const service = new WhalePetService()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root: Root = createRoot(host)
+    root.render(React.createElement(WhalePet, { whalePet: service }))
+    await new Promise<void>(resolve => setTimeout(resolve, 30))
+
+    await openSizePanel(host)
+    expect(host.querySelector('input[aria-label="鲸鲸大小"]')).not.toBeNull()
+
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await new Promise<void>(resolve => setTimeout(resolve, 20))
+    expect(host.querySelector('input[aria-label="鲸鲸大小"]')).toBeNull()
+    // Closing the panel never resets the chosen size.
+    expect(service.getSnapshot().size).toBe(1)
+
+    root.unmount()
+    host.remove()
+    service.dispose()
+  })
+})
+
 describe('ui-whale-pet naming panel', () => {
   it('renames through an inline input instead of window.prompt (Electron has no prompt)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})

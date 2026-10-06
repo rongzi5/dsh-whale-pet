@@ -21,7 +21,7 @@ export { WhalePet, type WhalePetProps } from './WhalePet.tsx'
 export { SessionWhaleObserver, deriveWhaleActivity } from './runtime/session-observer.ts'
 export { WhalePetService, type WhaleHitZone } from './runtime/whale-pet-service.ts'
 export { WhalePetChat } from './runtime/whale-pet-chat.ts'
-export { loadWhalePetState, saveWhalePetState, WHALE_PET_DEFAULTS, type WhalePetPersistedState } from './persistence.ts'
+export { loadWhalePetState, saveWhalePetState, WHALE_PET_DEFAULTS, WHALE_PET_SIZE_MAX, WHALE_PET_SIZE_MIN, WHALE_PET_SIZE_STEP, type WhalePetPersistedState } from './persistence.ts'
 export type { WhaleActivity, WhaleEffect, WhaleEffectKind, WhaleMood, WhaleRecap } from './activity.ts'
 export type { WhaleExternalState, WhaleScene } from './whale/scene.ts'
 

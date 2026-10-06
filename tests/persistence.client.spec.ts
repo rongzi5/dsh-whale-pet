@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   browserStorage,
+  clampWhalePetSize,
   daysSince,
   localDayKey,
   loadWhalePetState,
   saveWhalePetState,
   WHALE_PET_DEFAULTS,
+  WHALE_PET_SIZE_MAX,
+  WHALE_PET_SIZE_MIN,
   type StorageLike,
 } from '../src/client/persistence.ts'
 
@@ -82,6 +85,26 @@ describe('whale pet persistence', () => {
     saveWhalePetState(storage, { name: '  蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝蓝  ' })
     expect(loadWhalePetState(storage).name.length).toBeLessThanOrEqual(32)
     expect(loadWhalePetState(storage).name).toBe(loadWhalePetState(storage).name.trim())
+  })
+
+  it('defaults, clamps and rounds the persisted visible size', () => {
+    expect(loadWhalePetState(new FakeStorage()).size).toBe(1)
+
+    const storage = new FakeStorage()
+    saveWhalePetState(storage, { size: 1.25 })
+    expect(loadWhalePetState(storage).size).toBe(1.25)
+
+    // Hand-edited payloads are clamped into the supported range…
+    storage.setItem('dsh.whale-pet.v1', JSON.stringify({ size: 9 }))
+    expect(loadWhalePetState(storage).size).toBe(WHALE_PET_SIZE_MAX)
+    storage.setItem('dsh.whale-pet.v1', JSON.stringify({ size: 0.01 }))
+    expect(loadWhalePetState(storage).size).toBe(WHALE_PET_SIZE_MIN)
+    // …and non-numbers fall back to the authored size.
+    storage.setItem('dsh.whale-pet.v1', JSON.stringify({ size: 'big' }))
+    expect(loadWhalePetState(storage).size).toBe(1)
+
+    expect(clampWhalePetSize(Number.NaN)).toBe(1)
+    expect(clampWhalePetSize(1.234)).toBe(1.23)
   })
 
   it('degrades gracefully when storage is unavailable', () => {

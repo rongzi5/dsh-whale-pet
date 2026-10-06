@@ -22,15 +22,20 @@ DeepSeek Harness 3D 虎鲸桌宠的持久浏览器插件。
   会话事件（完成的回合、goal/plan 里程碑、带工具名和退出码的失败、
   输入时的问候）。其它部位不同：**尾巴**冒心并立刻巡游，**背鳍**立刻巡游，**鳍**吐泡。
 - **右键菜单**——和鲸鲸聊天（LLM，见下文）、查看/删除记忆（「鲸鲸记得什么…」）、
-  给鲸鲸命名、开关角落吸附、立即回到角落、隐藏。
+  给鲸鲸命名、调整大小、开关角落吸附、立即回到角落、隐藏。
   菜单支持键盘操作（Enter/Space），点击外部或 Esc 关闭。
 - **角落吸附**——超过点击阈值的真实拖拽在松手后会滑向最近角落，可在菜单里开关。
+- **大小调节**——菜单里的「调整大小…（100%）」会打开内联滑杆（50%–150%，5% 一档），
+  另有 −/＋ 微调和「恢复默认大小」。大小**只影响渲染**：缩放以桌宠自身锚点为中心，
+  栖息边缘、巡游路径、拖拽边界和庆祝椭圆在任何尺寸下都完全一致——放大虎鲸不会
+  改变它的运动路径。这个取舍是有意的：因为栖息位置同样保持不变，超过 100% 时贴着
+  边缘休憩的尾鳍可能探出视口一点，小于 100% 时轮廓则会略微离开角落。
 - **拖拽眩晕**——大力拖拽（指针累计移动至少 420px、平均速度至少 550px/s），
   或长时间拖拽（至少 4.5 秒且移动至少 24px）后松手，鲸鱼会眩晕约 4 秒：
   翻出白肚、轻微摇晃，三颗星以腹部为圆心沿带前后景深的椭圆旋转。恢复前会锁定
   悬停、点击、右键菜单和再次拖拽；长按不移动及被取消的手势不会触发。
 - **`Ctrl`/`Cmd` + `Alt` + `W`**——随时显示/隐藏桌宠，隐藏后快捷键仍有效。
-- **持久化**——名字、位置、隐藏状态和吸附偏好通过 `localStorage` 跨刷新保存
+- **持久化**——名字、位置、大小、隐藏状态和吸附偏好通过 `localStorage` 跨刷新保存
   （对隐私模式做了防护），回顾气泡还会记录你们已经相伴的天数。
 
 ## LLM 聊天与记忆
@@ -123,6 +128,7 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
 
 - `data-whale-activity` — 当前情绪（`idle`、`thinking`、`working`、`focused`、`celebrating`、`error`、`dizzy`、`sleeping`、`listening`、`awaiting`）
 - `data-whale-bridge` — 会话桥接状态（`off`、`waiting`、`bound`）
+- `data-whale-size` — 当前可见大小（整数百分比，`50`–`150`）
 
 ## 安装
 
@@ -164,7 +170,7 @@ npm pack
 ```sh
 npm install            # 开发工具链：typescript、esbuild、vitest、three 等
 npm run build          # tsc 声明 + esbuild host/client 产物 → lib/
-npm test               # vitest 套件（175 个用例）
+npm test               # vitest 套件（195 个用例）
 node install-profile.mjs web
 ```
 
@@ -176,7 +182,7 @@ node install-profile.mjs web
 
 - `src/client/activity.ts` — 纯情绪/特效词汇表和视图快照类型。
 - `src/client/motion.ts` — 纯帧率无关的屏幕运动，包含庆祝绕圈路径和角落吸附。
-- `src/client/persistence.ts` — 带防护的 `localStorage` 状态（名字、位置、隐藏、吸附偏好、首次见面日期）。
+- `src/client/persistence.ts` — 带防护的 `localStorage` 状态（名字、位置、大小、隐藏、吸附偏好、首次见面日期）。
 - `src/client/runtime/scheduler.ts` — 唯一的 `requestAnimationFrame` 时钟。
 - `src/client/runtime/whale-pet-controller.ts` — 拥有 DOM 监听、调度器和逐帧渲染；组合 `src/client/whale` 中的 Three.js 场景。
 - `src/client/runtime/whale-pet-service.ts` — 可观察运行时服务（`ctx.whalePet`），管理情绪、瞬时特效、回顾历史和持久化状态。

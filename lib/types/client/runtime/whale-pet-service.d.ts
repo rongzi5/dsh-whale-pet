@@ -7,7 +7,7 @@
  */
 import { type WhaleActivity, type WhaleBridgeState, type WhaleEffectKind, type WhaleMood, type WhalePetViewSnapshot } from '../activity.ts';
 import type { WhaleDragResult } from '../motion.ts';
-import { type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts';
+import { WhalePetController, type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts';
 import type { SessionWhaleObserver } from './session-observer.ts';
 import { type StorageLike } from '../persistence.ts';
 /** Clickable pet regions routed by the view to zone-specific reactions. */
@@ -40,7 +40,12 @@ export declare class WhalePetService {
     private dizzyTimer;
     private snapshot;
     private disposed;
-    constructor(storage?: StorageLike | null);
+    /**
+     * @param storage guarded storage channel, or null for an in-memory pet.
+     * @param controller runtime controller; injectable (with a fake scene) so
+     * headless DOM tests can drive a real mount without WebGL.
+     */
+    constructor(storage?: StorageLike | null, controller?: WhalePetController);
     /** Mount the view's DOM handles; restores the persisted position. Delegates to the controller unchanged. */
     mount(targets: WhalePetTargets, hooks: WhalePetControllerHooks): boolean;
     /** Unmount the current view surface without dropping the service or motion state. */
@@ -75,6 +80,13 @@ export declare class WhalePetService {
     setHidden(hidden: boolean): void;
     /** Toggle visibility; returns the new hidden state. */
     toggleHidden(): boolean;
+    /**
+     * Set the visible size multiplier; persists the choice and hands it to the
+     * motion controller, which only multiplies the rendered scale. The pet's
+     * position, patrol targets, drag clamping and celebration ellipse are
+     * computed from the authored box, so resizing never changes its path.
+     */
+    setSize(size: number): void;
     /** Toggle corner snapping for released drags; persists the choice. */
     setSnapToCorner(enabled: boolean): void;
     /** Glide to the nearest corner immediately (context-menu action). */

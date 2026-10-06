@@ -10,7 +10,7 @@ import { IDLE_ACTIVITY, sameActivity, type WhaleActivity, type WhaleBridgeState,
 import type { WhaleDragResult } from '../motion.ts'
 import { WhalePetController, type WhalePetControllerHooks, type WhalePetTargets } from './whale-pet-controller.ts'
 import type { SessionWhaleObserver } from './session-observer.ts'
-import { daysSince, loadWhalePetState, localDayKey, saveWhalePetState, type StorageLike, type WhalePetPersistedState } from '../persistence.ts'
+import { daysSince, loadWhalePetState, localDayKey, saveWhalePetState, clampWhalePetSize, type StorageLike, type WhalePetPersistedState } from '../persistence.ts'
 
 /** Clickable pet regions routed by the view to zone-specific reactions. */
 export type WhaleHitZone = 'body' | 'tail' | 'dorsal' | 'fin'
@@ -51,7 +51,7 @@ const BUBBLE_TEXT_LIMIT = 600
 const RECAP_HISTORY_LIMIT = 8
 
 export class WhalePetService {
-  private readonly controller = new WhalePetController()
+  private readonly controller: WhalePetController
   private readonly listeners = new Set<() => void>()
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
   private readonly persisted: WhalePetPersistedState
@@ -71,7 +71,16 @@ export class WhalePetService {
   private snapshot!: WhalePetViewSnapshot
   private disposed = false
 
-  public constructor(private readonly storage: StorageLike | null = null) {
+  /**
+   * @param storage guarded storage channel, or null for an in-memory pet.
+   * @param controller runtime controller; injectable (with a fake scene) so
+   * headless DOM tests can drive a real mount without WebGL.
+   */
+  public constructor(
+    private readonly storage: StorageLike | null = null,
+    controller: WhalePetController = new WhalePetController(),
+  ) {
+    this.controller = controller
     const loaded = loadWhalePetState(storage)
     if (loaded.since === '') {
       loaded.since = new Date().toISOString()
@@ -81,6 +90,7 @@ export class WhalePetService {
     this.snapshot = this.buildSnapshot()
     this.controller.setHidden(loaded.hidden)
     this.controller.motionController.setSnapToCorner(loaded.snapToCorner)
+    this.controller.motionController.setSizeScale(loaded.size)
   }
 
   /** Mount the view's DOM handles; restores the persisted position. Delegates to the controller unchanged. */
@@ -212,6 +222,21 @@ export class WhalePetService {
   public toggleHidden(): boolean {
     this.setHidden(!this.persisted.hidden)
     return this.persisted.hidden
+  }
+
+  /**
+   * Set the visible size multiplier; persists the choice and hands it to the
+   * motion controller, which only multiplies the rendered scale. The pet's
+   * position, patrol targets, drag clamping and celebration ellipse are
+   * computed from the authored box, so resizing never changes its path.
+   */
+  public setSize(size: number): void {
+    const next = clampWhalePetSize(size)
+    if (this.persisted.size === next) return
+    this.persisted.size = next
+    saveWhalePetState(this.storage, { size: next })
+    this.controller.motionController.setSizeScale(next)
+    this.publish()
   }
 
   /** Toggle corner snapping for released drags; persists the choice. */
@@ -493,6 +518,7 @@ export class WhalePetService {
       bridge: this.bridge,
       name: this.persisted.name,
       hidden: this.persisted.hidden,
+      size: this.persisted.size,
       snapToCorner: this.persisted.snapToCorner,
       recap: this.recapCurrent,
     })

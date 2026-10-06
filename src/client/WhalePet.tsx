@@ -4,7 +4,12 @@ import { WhalePetService, type WhaleHitZone } from './runtime/whale-pet-service.
 import type { WhalePetChat } from './runtime/whale-pet-chat.ts'
 import type { WhaleChatOptions, WhaleModelCatalog } from './llm.ts'
 import { forgetFact, loadWhaleMemory, rememberFacts, saveWhaleMemory } from './memory.ts'
-import { browserStorage } from './persistence.ts'
+import {
+  browserStorage,
+  WHALE_PET_SIZE_MAX,
+  WHALE_PET_SIZE_MIN,
+  WHALE_PET_SIZE_STEP,
+} from './persistence.ts'
 import styles from './WhalePet.module.css'
 
 export interface WhalePetProps {
@@ -23,10 +28,24 @@ type ChatBoxState = WhaleMenuState
 
 const MENU_WIDTH = 156
 const MENU_HEIGHT = 200
+/**
+ * Inline panels (name, memory, size) are wider than the menu — their CSS
+ * min-width plus padding/border — so they carry their own clamp; reusing the
+ * menu width would push the ＋ button and the percentage readout off-screen
+ * when the menu opens near the right edge.
+ */
+const PANEL_WIDTH = 264
+const PANEL_HEIGHT = 132
 /** Ignore the click that browsers fire right after a context menu. */
 const CLICK_AFTER_CONTEXT_MENU_MS = 400
 /** How long the pet keeps listening after the input loses focus. */
 const USER_TYPING_BLUR_DELAY_MS = 800
+
+/** Clamp a fixed-position overlay so a box of the given size stays on screen. */
+const clampOverlay = (x: number, y: number, width: number, height: number): WhaleMenuState => ({
+  x: Math.max(8, Math.min(x, (window.innerWidth ?? 0) - width - 8)),
+  y: Math.max(8, Math.min(y, (window.innerHeight ?? 0) - height - 8)),
+})
 
 const isEditableTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) return false
@@ -47,6 +66,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const chatBoxRef = useRef<HTMLDivElement | null>(null)
   const memoryBoxRef = useRef<HTMLDivElement | null>(null)
   const nameBoxRef = useRef<HTMLDivElement | null>(null)
+  const sizeBoxRef = useRef<HTMLDivElement | null>(null)
   const lastContextMenuAt = useRef(0)
   const [error, setError] = useState('')
   const [menu, setMenu] = useState<WhaleMenuState | null>(null)
@@ -57,6 +77,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
   const [memoryDraft, setMemoryDraft] = useState('')
   const [nameBox, setNameBox] = useState<WhaleMenuState | null>(null)
   const [nameDraft, setNameDraft] = useState('')
+  const [sizeBox, setSizeBox] = useState<WhaleMenuState | null>(null)
   const [catalog, setCatalog] = useState<WhaleModelCatalog | null>(null)
   const [catalogError, setCatalogError] = useState('')
   const [modelKey, setModelKey] = useState('')
@@ -174,6 +195,26 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
       document.removeEventListener('keydown', onKey)
     }
   }, [nameBox])
+
+  // The size panel closes on outside presses or Escape, mirroring the other
+  // inline panels (mousedown, so the opening menu-item click never closes it).
+  useEffect(() => {
+    if (sizeBox === null) return
+    const close = (event: MouseEvent): void => {
+      const target = event.target
+      if (target instanceof Node && sizeBoxRef.current !== null && sizeBoxRef.current.contains(target)) return
+      setSizeBox(null)
+    }
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape') setSizeBox(null)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [sizeBox])
 
   // Load the model catalog (and the persisted selection) when the bubble opens.
   useEffect(() => {
@@ -299,12 +340,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     event.stopPropagation()
     if (whalePet.isDizzy()) return
     lastContextMenuAt.current = Date.now()
-    const maxX = (window.innerWidth ?? 0) - MENU_WIDTH - 8
-    const maxY = (window.innerHeight ?? 0) - MENU_HEIGHT - 8
-    setMenu({
-      x: Math.max(8, Math.min(event.clientX, maxX)),
-      y: Math.max(8, Math.min(event.clientY, maxY)),
-    })
+    setMenu(clampOverlay(event.clientX, event.clientY, MENU_WIDTH, MENU_HEIGHT))
   }
 
   // Open the inline naming panel. `window.prompt` is unavailable in the
@@ -313,8 +349,9 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     if (menu === null) return
     setChatBox(null)
     setMemoryBox(null)
+    setSizeBox(null)
     setNameDraft(snapshot.name)
-    setNameBox({ x: menu.x, y: menu.y })
+    setNameBox(clampOverlay(menu.x, menu.y, PANEL_WIDTH, PANEL_HEIGHT))
   }
 
   const confirmRename = (): void => {
@@ -328,6 +365,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     if (whalePetChat === undefined || menu === null) return
     setMemoryBox(null)
     setNameBox(null)
+    setSizeBox(null)
     setChatBox({ x: menu.x, y: menu.y })
     setChatText('')
     setCatalogError('')
@@ -337,9 +375,20 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
     if (menu === null) return
     setChatBox(null)
     setNameBox(null)
-    setMemoryBox({ x: menu.x, y: menu.y })
+    setSizeBox(null)
+    setMemoryBox(clampOverlay(menu.x, menu.y, PANEL_WIDTH, PANEL_HEIGHT))
     setMemoryFacts(loadWhaleMemory(browserStorage()).facts)
     setMemoryDraft('')
+  }
+
+  // Open the inline size control. Sizing is render-only: the value scales the
+  // pet box after its translation/rotation, so the motion path is untouched.
+  const openSize = (): void => {
+    if (menu === null) return
+    setChatBox(null)
+    setMemoryBox(null)
+    setNameBox(null)
+    setSizeBox(clampOverlay(menu.x, menu.y, PANEL_WIDTH, PANEL_HEIGHT))
   }
 
   const remember = (): void => {
@@ -406,6 +455,7 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
         className={styles.pet}
         data-whale-activity={snapshot.activity.mood}
         data-whale-bridge={snapshot.bridge}
+        data-whale-size={Math.round(snapshot.size * 100)}
       >
         <span ref={shadowRef} className={styles.shadow} aria-hidden="true" />
         <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
@@ -480,6 +530,13 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
             鲸鲸记得什么…
           </button>
           <button type="button" className={styles.menuItem} onClick={() => { setMenu(null); rename() }}>命名…</button>
+          <button
+            type="button"
+            className={styles.menuItem}
+            onClick={() => { setMenu(null); openSize() }}
+          >
+            {`调整大小…（${Math.round(snapshot.size * 100)}%）`}
+          </button>
           <button
             type="button"
             className={styles.menuItem}
@@ -647,6 +704,58 @@ export function WhalePet({ whalePet, whalePetChat }: WhalePetProps): React.React
               确定
             </button>
           </div>
+        </div>
+      ) : null}
+      {sizeBox !== null ? (
+        <div
+          ref={sizeBoxRef}
+          className={styles.sizeBox}
+          style={{ left: sizeBox.x, top: sizeBox.y }}
+          role="dialog"
+          aria-label="调整鲸鲸大小"
+          data-whale-size-panel="open"
+        >
+          <div className={styles.sizeTitle}>鲸鲸大小</div>
+          <div className={styles.sizeRow}>
+            <button
+              type="button"
+              className={styles.sizeStep}
+              aria-label="缩小鲸鲸"
+              disabled={snapshot.size <= WHALE_PET_SIZE_MIN}
+              onClick={() => whalePet.setSize(snapshot.size - WHALE_PET_SIZE_STEP)}
+            >
+              −
+            </button>
+            <input
+              type="range"
+              className={styles.sizeSlider}
+              aria-label="鲸鲸大小"
+              autoFocus
+              min={Math.round(WHALE_PET_SIZE_MIN * 100)}
+              max={Math.round(WHALE_PET_SIZE_MAX * 100)}
+              step={Math.round(WHALE_PET_SIZE_STEP * 100)}
+              value={Math.round(snapshot.size * 100)}
+              onChange={event => whalePet.setSize(Number(event.target.value) / 100)}
+            />
+            <button
+              type="button"
+              className={styles.sizeStep}
+              aria-label="放大鲸鲸"
+              disabled={snapshot.size >= WHALE_PET_SIZE_MAX}
+              onClick={() => whalePet.setSize(snapshot.size + WHALE_PET_SIZE_STEP)}
+            >
+              ＋
+            </button>
+            <span className={styles.sizeValue}>{Math.round(snapshot.size * 100)}%</span>
+          </div>
+          <button
+            type="button"
+            className={styles.sizeReset}
+            disabled={snapshot.size === 1}
+            onClick={() => whalePet.setSize(1)}
+          >
+            恢复默认大小（100%）
+          </button>
         </div>
       ) : null}
     </div>

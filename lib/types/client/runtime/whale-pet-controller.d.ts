@@ -13,6 +13,7 @@
  */
 import { type WhaleActivity } from '../activity.ts';
 import { WhaleMotionController, type WhaleDragResult } from '../motion.ts';
+import { type WhaleScene } from '../whale/scene.ts';
 /** DOM handles the view lends to the runtime for the lifetime of one mount. */
 export interface WhalePetTargets {
     root: HTMLDivElement;
@@ -26,8 +27,11 @@ export interface WhalePetControllerHooks {
     /** Called after a drag release with the final position and gesture measurements. */
     onRelease?(x: number, y: number, drag: WhaleDragResult): void;
 }
+/** Builds the WebGL scene for one canvas; injectable so headless DOM tests can mount. */
+export type WhaleSceneFactory = (canvas: HTMLCanvasElement) => WhaleScene;
 export declare class WhalePetController {
     private readonly motion;
+    private readonly createScene;
     private scene;
     private scheduler;
     private targets;
@@ -38,7 +42,7 @@ export declare class WhalePetController {
     private activity;
     private lastYaw;
     private hidden;
-    constructor(motion?: WhaleMotionController);
+    constructor(motion?: WhaleMotionController, createScene?: WhaleSceneFactory);
     /**
      * Mount the runtime onto the view's DOM handles. Idempotent: a repeated
      * call after a previous start disposes the previous mount first, which

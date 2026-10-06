@@ -101,6 +101,8 @@ export class WhaleMotionController {
   private settleTargetX = 0
   private settleTargetY = 0
 
+  private sizeScale = 1
+
   private nextLook: number
   private lookTime = 0
   private nextPatrol: number
@@ -228,6 +230,21 @@ export class WhaleMotionController {
   public snapToCornerNow(): void {
     if (this.dragging || this.mode === 'loop' || this.activity.mood === 'dizzy') return
     this.beginCornerSnap()
+  }
+
+  /**
+   * Set the visible size multiplier applied to the rendered pet box.
+   *
+   * Deliberately inert for the path: bounds, patrol targets, drag clamping,
+   * the celebration ellipse and every yaw/pitch/roll term are computed from
+   * the authored {@link PET_WIDTH}x{@link PET_HEIGHT} box, so the pet follows
+   * exactly the same trajectory at any size. The multiplier only rides in
+   * {@link WhaleMotionFrame.scale}, which the view composes *after* the
+   * translation and rotation; the scaled box therefore still pivots on the
+   * same anchor point and the path is unchanged.
+   */
+  public setSizeScale(scale: number): void {
+    this.sizeScale = Number.isFinite(scale) && scale > 0 ? scale : 1
   }
 
   /** Restore a persisted position, clamped to the current viewport. */
@@ -682,7 +699,7 @@ export class WhaleMotionController {
       x: this.x,
       y: this.y,
       angle: this.angle,
-      scale: this.mode === 'loop' ? this.depthScale : 1,
+      scale: (this.mode === 'loop' ? this.depthScale : 1) * this.sizeScale,
       dragging: this.dragging,
       hover: this.hovering,
       mode,

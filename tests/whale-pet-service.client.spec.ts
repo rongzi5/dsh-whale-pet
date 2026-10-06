@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { WhaleMotionController } from '../src/client/motion.ts'
-import { loadWhalePetState, type StorageLike } from '../src/client/persistence.ts'
+import { WhaleMotionController } from '../src/client/motion.ts'
+import { loadWhalePetState, WHALE_PET_SIZE_MAX, WHALE_PET_SIZE_MIN, type StorageLike } from '../src/client/persistence.ts'
+import { WhalePetController } from '../src/client/runtime/whale-pet-controller.ts'
 import { DIZZY_DURATION_MS, WhalePetService, shouldEnterDizzy } from '../src/client/runtime/whale-pet-service.ts'
 
 class FakeStorage implements StorageLike {
@@ -14,6 +15,9 @@ class FakeStorage implements StorageLike {
     this.map.set(key, value)
   }
 }
+
+const motionOf = (service: WhalePetService): WhaleMotionController =>
+  (service as unknown as { controller: { motionController: WhaleMotionController } }).controller.motionController
 
 describe('WhalePetService', () => {
   it('anchors bubbles at the mouth implied by the current yaw', () => {
@@ -132,6 +136,91 @@ describe('WhalePetService', () => {
     expect(state.y).toBe(456)
   })
 
+  it('persists the visible size and forwards it to the motion layer', () => {
+    const storage = new FakeStorage()
+    const service = new WhalePetService(storage)
+    expect(service.getSnapshot().size).toBe(1)
+
+    service.setSize(1.4)
+    expect(service.getSnapshot().size).toBe(1.4)
+    expect(motionOf(service).step(1 / 60).scale).toBeCloseTo(1.4, 6)
+
+    // Requests outside the supported range clamp instead of being persisted raw.
+    service.setSize(99)
+    expect(service.getSnapshot().size).toBe(WHALE_PET_SIZE_MAX)
+    service.setSize(0)
+    expect(service.getSnapshot().size).toBe(WHALE_PET_SIZE_MIN)
+    service.dispose()
+
+    const reloaded = new WhalePetService(storage)
+    expect(reloaded.getSnapshot().size).toBe(WHALE_PET_SIZE_MIN)
+    expect(motionOf(reloaded).step(1 / 60).scale).toBeCloseTo(WHALE_PET_SIZE_MIN, 6)
+    reloaded.dispose()
+  })
+
+  it('never lets the size reach the motion path', () => {
+    // Deterministic controllers, so both services walk the identical path.
+    const deterministic = (): WhalePetController =>
+      new WhalePetController(new WhaleMotionController(1280, 720, () => 0))
+    const authored = new WhalePetService(null, deterministic())
+    const enlarged = new WhalePetService(null, deterministic())
+    enlarged.setSize(1.5)
+
+    for (const motion of [motionOf(authored), motionOf(enlarged)]) {
+      // Next to the right edge: the patrol runs along the maxX()-derived line,
+      // so a size-dependent bound or target would drift the two paths apart.
+      motion.restorePosition(900, 300)
+      motion.step(1 / 60)
+      motion.patrolNow()
+    }
+
+    let travelled = 0
+    let previous = { x: 900, y: 300 }
+    for (let frame = 0; frame < 200; frame += 1) {
+      const plain = motionOf(authored).step(1 / 60)
+      const big = motionOf(enlarged).step(1 / 60)
+      travelled += Math.hypot(plain.x - previous.x, plain.y - previous.y)
+      previous = { x: plain.x, y: plain.y }
+      expect(big.x).toBe(plain.x)
+      expect(big.y).toBe(plain.y)
+      expect(big.yaw).toBe(plain.yaw)
+    }
+    // The patrol really moved, so the equality above is not vacuous.
+    expect(travelled).toBeGreaterThan(50)
+
+    authored.dispose()
+    enlarged.dispose()
+  })
+
+  it('resizes without moving the pet', () => {
+    const service = new WhalePetService()
+    const motion = motionOf(service)
+    motion.restorePosition(500, 400)
+    motion.step(1 / 60)
+    service.setSize(1.5)
+
+    const frame = motion.step(1 / 60)
+    expect(frame.x).toBe(500)
+    expect(frame.y).toBe(400)
+    expect(frame.scale).toBeCloseTo(1.5, 6)
+    service.dispose()
+  })
+
+  it('ignores a size change that is already in effect', () => {
+    const storage = new FakeStorage()
+    const service = new WhalePetService(storage)
+    let publishes = 0
+    const unsubscribe = service.subscribe(() => { publishes += 1 })
+
+    service.setSize(1.2)
+    expect(publishes).toBe(1)
+    service.setSize(1.2)
+    expect(publishes).toBe(1)
+
+    unsubscribe()
+    service.dispose()
+  })
+
   it('greets at most once per local day', () => {
     const storage = new FakeStorage()
     const service = new WhalePetService(storage)
@@ -210,9 +299,6 @@ describe('WhalePetService', () => {
 })
 
 describe('WhalePetService.handleZoneClick', () => {
-  const motionOf = (service: WhalePetService): WhaleMotionController =>
-    (service as unknown as { controller: { motionController: WhaleMotionController } }).controller.motionController
-
   it('blows a bubble on a fin click', () => {
     const service = new WhalePetService()
     expect(service.handleZoneClick('fin')).toBe(true)

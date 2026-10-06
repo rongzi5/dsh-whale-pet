@@ -12,6 +12,11 @@ export interface WhalePetPersistedState {
   name: string
   /** Whether the pet is hidden by the keyboard shortcut. */
   hidden: boolean
+  /**
+   * Visible size multiplier (1 = the authored 320x240 pet box). It only scales
+   * the rendered box; the motion path never reads it.
+   */
+  size: number
   /** Whether released drags glide to the nearest corner. */
   snapToCorner: boolean
   /** Last pet position (CSS pixels, pet top-left); null = default edge rest. */
@@ -31,9 +36,17 @@ export interface StorageLike {
 const STORAGE_KEY = 'dsh.whale-pet.v1'
 const NAME_MAX_LENGTH = 32
 
+/** Smallest visible size multiplier the pet accepts (50%). */
+export const WHALE_PET_SIZE_MIN = 0.5
+/** Largest visible size multiplier the pet accepts (150%). */
+export const WHALE_PET_SIZE_MAX = 1.5
+/** Slider/step granularity of the size control (5 percentage points). */
+export const WHALE_PET_SIZE_STEP = 0.05
+
 export const WHALE_PET_DEFAULTS: Readonly<WhalePetPersistedState> = Object.freeze({
   name: '鲸鲸',
   hidden: false,
+  size: 1,
   snapToCorner: true,
   x: null,
   y: null,
@@ -43,6 +56,17 @@ export const WHALE_PET_DEFAULTS: Readonly<WhalePetPersistedState> = Object.freez
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/**
+ * Clamp a requested size multiplier into the supported range and round it to
+ * whole percent, so a hand-edited payload or a drifting slider value cannot
+ * reach the renderer as `NaN` or an absurd scale.
+ */
+export function clampWhalePetSize(size: number): number {
+  if (!Number.isFinite(size)) return WHALE_PET_DEFAULTS.size
+  const clamped = Math.min(WHALE_PET_SIZE_MAX, Math.max(WHALE_PET_SIZE_MIN, size))
+  return Math.round(clamped * 100) / 100
 }
 
 /** Read and validate the persisted state; any failure falls back to defaults. */
@@ -69,6 +93,7 @@ export function loadWhalePetState(storage: StorageLike | null): WhalePetPersiste
       ? record.name.trim().slice(0, NAME_MAX_LENGTH)
       : WHALE_PET_DEFAULTS.name,
     hidden: typeof record.hidden === 'boolean' ? record.hidden : WHALE_PET_DEFAULTS.hidden,
+    size: clampWhalePetSize(record.size as number),
     snapToCorner: typeof record.snapToCorner === 'boolean' ? record.snapToCorner : WHALE_PET_DEFAULTS.snapToCorner,
     x: finiteNumber(record.x),
     y: finiteNumber(record.y),

@@ -36,6 +36,9 @@ export interface WhalePetControllerHooks {
   onRelease?(x: number, y: number, drag: WhaleDragResult): void
 }
 
+/** Builds the WebGL scene for one canvas; injectable so headless DOM tests can mount. */
+export type WhaleSceneFactory = (canvas: HTMLCanvasElement) => WhaleScene
+
 export class WhalePetController {
   private scene: WhaleScene | null = null
   private scheduler: WhaleRenderScheduler | null = null
@@ -50,6 +53,7 @@ export class WhalePetController {
 
   public constructor(
     private readonly motion: WhaleMotionController = new WhaleMotionController(),
+    private readonly createScene: WhaleSceneFactory = createWhaleScene,
   ) {}
 
   /**
@@ -69,7 +73,7 @@ export class WhalePetController {
 
     let scene: WhaleScene
     try {
-      scene = createWhaleScene(targets.canvas)
+      scene = this.createScene(targets.canvas)
     } catch (cause) {
       console.error('[ui-whale-pet] creating the Three.js scene failed:', cause)
       hooks.onError(RENDER_ERROR_MESSAGE)

@@ -248,6 +248,109 @@ describe('WhaleMotionController', () => {
     })
   })
 
+  it('scales the rendered box without changing the patrol path', () => {
+    const authored = new WhaleMotionController(1280, 720, fixedRandom)
+    const enlarged = new WhaleMotionController(1280, 720, fixedRandom)
+    enlarged.setSizeScale(1.5)
+    for (const motion of [authored, enlarged]) {
+      // Resting next to the right edge, so the patrol walks along the
+      // maxX()-derived edge line and touches the clamp: a size-dependent
+      // bound or target would show up as a position drift.
+      motion.restorePosition(900, 300)
+      motion.step(1 / 60)
+      motion.patrolNow()
+    }
+
+    let travelled = 0
+    let previous = { x: 900, y: 300 }
+    for (let frame = 0; frame < 400; frame += 1) {
+      const plain = authored.step(1 / 60)
+      const big = enlarged.step(1 / 60)
+      travelled += Math.hypot(plain.x - previous.x, plain.y - previous.y)
+      previous = { x: plain.x, y: plain.y }
+
+      // Same trajectory, same heading, same depth: only the scale differs.
+      expect(big.x).toBe(plain.x)
+      expect(big.y).toBe(plain.y)
+      expect(big.yaw).toBe(plain.yaw)
+      expect(big.scale).toBeCloseTo(plain.scale * 1.5, 10)
+    }
+    // Guard against a vacuous pass: the patrol must really have moved.
+    expect(travelled).toBeGreaterThan(50)
+  })
+
+  it('ignores a non-finite or non-positive size multiplier', () => {
+    const motion = new WhaleMotionController(1280, 720, fixedRandom)
+    motion.setSizeScale(Number.NaN)
+    expect(motion.step(1 / 60).scale).toBe(1)
+    motion.setSizeScale(0)
+    expect(motion.step(1 / 60).scale).toBe(1)
+    motion.setSizeScale(-2)
+    expect(motion.step(1 / 60).scale).toBe(1)
+  })
+
+  it('keeps drag clamping and corner snapping independent of the size', () => {
+    const authored = new WhaleMotionController(1280, 720, fixedRandom)
+    const enlarged = new WhaleMotionController(1280, 720, fixedRandom)
+    enlarged.setSizeScale(1.5)
+    for (const motion of [authored, enlarged]) {
+      motion.restorePosition(200, 160)
+      motion.step(1 / 60)
+      motion.beginDrag(360, 280)
+      // A pointer far outside the viewport clamps the drag target to
+      // maxX()/maxY(); the follow is measured against that clamped target.
+      motion.pointerMove(2_000, 2_000)
+    }
+
+    let travelled = 0
+    let previous = { x: 200, y: 160 }
+    const runFrames = (frames: number): void => {
+      for (let frame = 0; frame < frames; frame += 1) {
+        const plain = authored.step(1 / 60)
+        const big = enlarged.step(1 / 60)
+        travelled += Math.hypot(plain.x - previous.x, plain.y - previous.y)
+        previous = { x: plain.x, y: plain.y }
+        expect(big.x).toBe(plain.x)
+        expect(big.y).toBe(plain.y)
+      }
+    }
+
+    runFrames(10)
+    for (const motion of [authored, enlarged]) motion.releaseDrag()
+    runFrames(300)
+
+    // The drag really travelled to the clamped target and then glided to the
+    // nearest corner (maxX, maxY); no size-independent bound could fake this.
+    expect(travelled).toBeGreaterThan(50)
+    expect(authored.position.x).toBe(1280 - PET_WIDTH - 14)
+    expect(authored.position.y).toBe(720 - PET_HEIGHT - 14)
+  })
+
+  it('keeps the celebration loop radii independent of the size', () => {
+    const authored = new WhaleMotionController(1440, 900, fixedRandom)
+    const shrunk = new WhaleMotionController(1440, 900, fixedRandom)
+    shrunk.setSizeScale(0.5)
+    for (const motion of [authored, shrunk]) {
+      motion.restorePosition(700, 700)
+      motion.step(1 / 60)
+      motion.celebrate()
+    }
+
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    for (let frame = 0; frame < 300; frame += 1) {
+      const plain = authored.step(1 / 60)
+      const small = shrunk.step(1 / 60)
+      minX = Math.min(minX, plain.x)
+      maxX = Math.max(maxX, plain.x)
+      expect(small.x).toBe(plain.x)
+      expect(small.y).toBe(plain.y)
+      expect(small.scale).toBeCloseTo(plain.scale * 0.5, 10)
+    }
+    // Guard against a vacuous pass: the ellipse must really sweep the screen.
+    expect(maxX - minX).toBeGreaterThan(100)
+  })
+
   it('holds position and suppresses patrols while dizzy', () => {
     const motion = new WhaleMotionController(1280, 720, fixedRandom)
     motion.restorePosition(600, 300)

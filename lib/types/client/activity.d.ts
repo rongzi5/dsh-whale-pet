@@ -56,6 +56,8 @@ export interface WhalePetViewSnapshot {
     name: string;
     /** Whether the pet is hidden by the keyboard shortcut. */
     hidden: boolean;
+    /** Visible size multiplier (1 = authored size); render-only, path-independent. */
+    size: number;
     /** Whether released drags glide to the nearest corner. */
     snapToCorner: boolean;
     /** The recap bubble currently visible, or null. */

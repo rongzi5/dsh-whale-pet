@@ -11,6 +11,11 @@ export interface WhalePetPersistedState {
     name: string;
     /** Whether the pet is hidden by the keyboard shortcut. */
     hidden: boolean;
+    /**
+     * Visible size multiplier (1 = the authored 320x240 pet box). It only scales
+     * the rendered box; the motion path never reads it.
+     */
+    size: number;
     /** Whether released drags glide to the nearest corner. */
     snapToCorner: boolean;
     /** Last pet position (CSS pixels, pet top-left); null = default edge rest. */
@@ -25,7 +30,19 @@ export interface StorageLike {
     getItem(key: string): string | null;
     setItem(key: string, value: string): void;
 }
+/** Smallest visible size multiplier the pet accepts (50%). */
+export declare const WHALE_PET_SIZE_MIN = 0.5;
+/** Largest visible size multiplier the pet accepts (150%). */
+export declare const WHALE_PET_SIZE_MAX = 1.5;
+/** Slider/step granularity of the size control (5 percentage points). */
+export declare const WHALE_PET_SIZE_STEP = 0.05;
 export declare const WHALE_PET_DEFAULTS: Readonly<WhalePetPersistedState>;
+/**
+ * Clamp a requested size multiplier into the supported range and round it to
+ * whole percent, so a hand-edited payload or a drifting slider value cannot
+ * reach the renderer as `NaN` or an absurd scale.
+ */
+export declare function clampWhalePetSize(size: number): number;
 /** Read and validate the persisted state; any failure falls back to defaults. */
 export declare function loadWhalePetState(storage: StorageLike | null): WhalePetPersistedState;
 /** Merge a patch over the current persisted state and write it back. */

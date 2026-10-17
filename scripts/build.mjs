@@ -3,7 +3,7 @@
  * Standalone build for the whale pet package (no dsh workspace required).
  *
  *  1. tsc (declaration-only) → lib/types (d.ts tree)
- *  2. esbuild host bundles  → lib/index.js, lib/invariant.js (self-contained
+ *  2. esbuild host bundles  → lib/index.js (self-contained
  *     ESM: all imports are type-only or inlined, so the cordis loader needs
  *     no node_modules next to the plugin)
  *  3. esbuild client bundle → lib/client.js in the DSH `__ModuleLoader__.load`
@@ -80,17 +80,6 @@ await build({
   outfile: join(ROOT, 'lib/index.js'),
   logLevel: 'warning',
 })
-step('esbuild invariant companion → lib/invariant.js')
-await build({
-  entryPoints: [join(ROOT, 'src/invariant.ts')],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  target: 'node22',
-  outfile: join(ROOT, 'lib/invariant.js'),
-  logLevel: 'warning',
-})
-
 // 3. Browser bundle in the DSH client-loader format.
 step('esbuild client bundle → lib/client.js')
 const tmp = join(ROOT, 'lib', '.client.cjs')

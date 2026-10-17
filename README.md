@@ -167,7 +167,7 @@ Debug attributes on the pet element:
 
 ## Installation
 
-### DeepSeek Harness Desktop (0.2.0-rc.2)
+### DeepSeek Harness Desktop (0.2.0-rc.2 / 0.2.1-rc.2)
 
 Desktop owns the reserved `desktop` profile, so install this bundle from the
 application's Plugins page rather than the ordinary `dsh plugin` CLI. Build and

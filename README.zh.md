@@ -132,7 +132,7 @@ agent 忙碌时**单击鲸鲸**会直接弹出趣味进度气泡（"正在鼓捣
 
 ## 安装
 
-### DeepSeek Harness 桌面版（0.2.0-rc.2）
+### DeepSeek Harness 桌面版（0.2.0-rc.2 / 0.2.1-rc.2）
 
 桌面版自行管理保留的 `desktop` profile，因此应从应用内的 Plugins 页面安装，不要使用普通 `dsh plugin` CLI。先构建并打包插件：
 

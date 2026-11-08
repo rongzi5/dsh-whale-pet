@@ -244,6 +244,25 @@ function sendJson(res: { writeHead(status: number, headers: Record<string, strin
   res.end(JSON.stringify(payload))
 }
 
+/** Per-client chat rate limit: at most this many requests per window. */
+const CHAT_RATE_LIMIT_MAX = 20
+/** Chat rate limit window, in milliseconds. */
+const CHAT_RATE_LIMIT_WINDOW_MS = 60_000
+const chatRateLimitState = new Map<string, { count: number; resetAt: number }>()
+
+/** Simple fixed-window limiter keyed by client address; true = request allowed. */
+function allowChatRequest(key: string): boolean {
+  const now = Date.now()
+  const entry = chatRateLimitState.get(key)
+  if (entry === undefined || now >= entry.resetAt) {
+    chatRateLimitState.set(key, { count: 1, resetAt: now + CHAT_RATE_LIMIT_WINDOW_MS })
+    return true
+  }
+  if (entry.count >= CHAT_RATE_LIMIT_MAX) return false
+  entry.count += 1
+  return true
+}
+
 /**
  * Build the HTTP handler for the `/api/whale-pet` prefix.
  * Endpoints:
@@ -285,6 +304,11 @@ export function createChatProxyHandler(
     }
     if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
       sendJson(res, 405, { error: 'method not allowed' })
+      return
+    }
+    const clientKey = req.socket.remoteAddress ?? 'unknown'
+    if (!allowChatRequest(clientKey)) {
+      sendJson(res, 429, { error: 'too many chat requests, please slow down' })
       return
     }
     let body: unknown
